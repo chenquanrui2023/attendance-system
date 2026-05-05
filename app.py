@@ -505,15 +505,15 @@ def create_exercise():
     data = request.get_json() or {}
     date = data.get('date')
     start_time = data.get('start_time')
-    end_time = data.get('end_time', '').strip() or None
+    end_time = (data.get('end_time') or '').strip()
     exercise_type = data.get('exercise_type', '').strip()
-    notes = data.get('notes', '').strip()
+    notes = (data.get('notes') or '').strip()
 
-    if not date or not start_time or not exercise_type:
-        return jsonify({'success': False, 'message': '日期、开始时间、运动项目为必填'})
+    if not date or not start_time or not end_time or not exercise_type:
+        return jsonify({'success': False, 'message': '日期、开始时间、结束时间、运动项目为必填'})
 
     start_full = start_time + ':00'
-    end_full = (end_time + ':00') if end_time else None
+    end_full = end_time + ':00'
 
     conn = get_db()
     cur = conn.cursor()

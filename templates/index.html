@@ -337,12 +337,12 @@
                         <input type="time" id="exeStart" value="08:00">
                     </div>
                     <div class="field">
-                        <label>结束 <span style="color:#999;font-weight:400;">(选填)</span></label>
+                        <label>结束</label>
                         <input type="time" id="exeEnd">
                     </div>
                     <div class="field">
                         <label>项目</label>
-                        <select id="exeType">
+                        <select id="exeType" onchange="toggleExeCustomType()">
                             <option>跑步</option>
                             <option>游泳</option>
                             <option>骑行</option>
@@ -355,6 +355,10 @@
                             <option>散步</option>
                             <option>其他</option>
                         </select>
+                    </div>
+                    <div class="field" id="exeCustomField" style="display:none;">
+                        <label>自定义项目</label>
+                        <input type="text" id="exeCustomType" placeholder="输入运动项目">
                     </div>
                     <div class="field" style="flex:1;">
                         <label>备注</label>
@@ -920,22 +924,32 @@
             container.innerHTML = html;
         }
 
+        function toggleExeCustomType() {
+            const sel = document.getElementById('exeType');
+            document.getElementById('exeCustomField').style.display = sel.value === '其他' ? 'block' : 'none';
+        }
+
         async function addExercise() {
             const date = document.getElementById('exeDate').value;
             const start_time = document.getElementById('exeStart').value;
             const end_time = document.getElementById('exeEnd').value;
-            const exercise_type = document.getElementById('exeType').value;
+            let exercise_type = document.getElementById('exeType').value;
             const notes = document.getElementById('exeNotes').value.trim();
 
-            if (!date || !start_time || !exercise_type) {
-                showToast('请填写日期、开始时间和运动项目', true);
+            if (exercise_type === '其他') {
+                const custom = document.getElementById('exeCustomType').value.trim();
+                if (custom) exercise_type = custom;
+            }
+
+            if (!date || !start_time || !end_time || !exercise_type) {
+                showToast('请填写日期、开始时间、结束时间和运动项目', true);
                 return;
             }
 
             const r = await apiFetch('/api/exercises', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ date, start_time, end_time: end_time || null, exercise_type, notes }),
+                body: JSON.stringify({ date, start_time, end_time, exercise_type, notes }),
             });
             if (!r) return;
             const d = await r.json();
