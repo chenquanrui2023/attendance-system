@@ -83,6 +83,18 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS exercise_records (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                date DATE NOT NULL,
+                start_time TIME NOT NULL,
+                end_time TIME,
+                exercise_type VARCHAR(50) NOT NULL,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
     else:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -109,6 +121,18 @@ def init_db():
                 title TEXT NOT NULL,
                 deadline TEXT,
                 completed INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS exercise_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                date TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                exercise_type TEXT NOT NULL,
+                notes TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -437,6 +461,98 @@ def delete_plan(plan_id):
     if deleted:
         return jsonify({'success': True})
     return jsonify({'success': False, 'message': '未找到该计划'})
+
+
+# ---------- 运动记录 ----------
+@app.route('/api/exercises', methods=['GET'])
+@login_required
+def list_exercises():
+    user_id = session['user_id']
+    conn = get_db()
+    cur = conn.cursor()
+    if IS_POSTGRES:
+        rows = cur.execute(
+            'SELECT * FROM exercise_records WHERE user_id = %s ORDER BY date DESC, start_time DESC',
+            (user_id,)
+        ).fetchall()
+    else:
+        rows = cur.execute(
+            'SELECT * FROM exercise_records WHERE user_id = ? ORDER BY date DESC, start_time DESC',
+            (user_id,)
+        ).fetchall()
+    conn.close()
+    from collections import OrderedDict
+    days = OrderedDict()
+    for r in rows:
+        r_date = str(r['date'])[:10] if IS_POSTGRES else r['date']
+        if r_date not in days:
+            days[r_date] = []
+        days[r_date].append({
+            'id': r['id'],
+            'date': r_date,
+            'start_time': str(r['start_time'])[:5],
+            'end_time': str(r['end_time'])[:5] if r['end_time'] else None,
+            'exercise_type': r['exercise_type'],
+            'notes': r['notes'],
+        })
+    return jsonify(days)
+
+
+@app.route('/api/exercises', methods=['POST'])
+@login_required
+def create_exercise():
+    user_id = session['user_id']
+    data = request.get_json() or {}
+    date = data.get('date')
+    start_time = data.get('start_time')
+    end_time = data.get('end_time', '').strip() or None
+    exercise_type = data.get('exercise_type', '').strip()
+    notes = data.get('notes', '').strip()
+
+    if not date or not start_time or not exercise_type:
+        return jsonify({'success': False, 'message': '日期、开始时间、运动项目为必填'})
+
+    start_full = start_time + ':00'
+    end_full = (end_time + ':00') if end_time else None
+
+    conn = get_db()
+    cur = conn.cursor()
+    if IS_POSTGRES:
+        cur.execute(
+            'INSERT INTO exercise_records (user_id, date, start_time, end_time, exercise_type, notes) VALUES (%s, %s, %s, %s, %s, %s)',
+            (user_id, date, start_full, end_full, exercise_type, notes)
+        )
+    else:
+        cur.execute(
+            'INSERT INTO exercise_records (user_id, date, start_time, end_time, exercise_type, notes) VALUES (?, ?, ?, ?, ?, ?)',
+            (user_id, date, start_full, end_full, exercise_type, notes)
+        )
+    conn.commit()
+    record_id = cur.lastrowid if not IS_POSTGRES else _get_last_id(cur)
+    conn.close()
+    return jsonify({'success': True, 'id': record_id})
+
+
+@app.route('/api/exercises/<int:record_id>', methods=['DELETE'])
+@login_required
+def delete_exercise(record_id):
+    user_id = session['user_id']
+    conn = get_db()
+    cur = conn.cursor()
+    if IS_POSTGRES:
+        cur.execute(
+            'DELETE FROM exercise_records WHERE id = %s AND user_id = %s', (record_id, user_id)
+        )
+    else:
+        cur.execute(
+            'DELETE FROM exercise_records WHERE id = ? AND user_id = ?', (record_id, user_id)
+        )
+    deleted = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    if deleted:
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'message': '未找到该记录'})
 
 
 # ---------- 页面 ----------

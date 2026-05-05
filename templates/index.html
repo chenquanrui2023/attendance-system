@@ -193,6 +193,62 @@
         }
         .toast.show { opacity: 1; }
         .toast.error { background: #ff4d4f; }
+
+        /* Main tabs */
+        .main-tabs {
+            display: flex; gap: 8px; margin-bottom: 16px;
+        }
+        .main-tab {
+            flex: 1; padding: 10px; text-align: center; cursor: pointer;
+            border-radius: 8px; font-size: 14px; font-weight: 600;
+            border: none; background: #fff; color: #666;
+            box-shadow: 0 1px 4px rgba(0,0,0,.06);
+            transition: all .2s;
+        }
+        .main-tab.active { background: #1890ff; color: #fff; }
+        .main-tab:hover:not(.active) { background: #e6f7ff; }
+
+        .sub-tabs {
+            display: flex; gap: 6px; margin-bottom: 16px;
+            background: #f0f2f5; border-radius: 8px; padding: 3px;
+        }
+        .sub-tab {
+            flex: 1; padding: 8px; text-align: center; cursor: pointer;
+            border-radius: 6px; font-size: 13px; font-weight: 500;
+            border: none; background: transparent; color: #666;
+            transition: all .2s;
+        }
+        .sub-tab.active { background: #fff; color: #333; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+        .sub-tab:hover:not(.active) { background: #e6f7ff; }
+
+        /* Exercise */
+        .exe-form-row {
+            display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: flex-end;
+        }
+        .exe-form-row .field { display: flex; flex-direction: column; gap: 4px; }
+        .exe-form-row .field label { font-size: 12px; color: #888; font-weight: 500; }
+        .exe-form-row input, .exe-form-row select {
+            border: 1px solid #d9d9d9; border-radius: 6px; padding: 7px 10px; font-size: 13px;
+        }
+        .exe-form-row input:focus, .exe-form-row select:focus {
+            outline: none; border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24,144,255,.2);
+        }
+        .exe-list .exe-day { margin-bottom: 14px; }
+        .exe-list .exe-day-header {
+            font-size: 14px; font-weight: 600; color: #333;
+            border-bottom: 1px solid #f0f0f0; padding: 6px 0; margin-bottom: 6px;
+        }
+        .exe-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 6px 0 6px 12px; border-bottom: 1px solid #f5f5f5;
+        }
+        .exe-item:last-child { border-bottom: none; }
+        .exe-time { font-size: 12px; color: #888; white-space: nowrap; min-width: 80px; }
+        .exe-type {
+            display: inline-block; background: #e6f7ff; color: #1890ff;
+            border-radius: 4px; padding: 1px 8px; font-size: 12px; font-weight: 500;
+        }
+        .exe-notes { font-size: 13px; color: #555; flex: 1; }
     </style>
 </head>
 <body>
@@ -226,27 +282,87 @@
             </div>
         </div>
 
-        <!-- 图表区域 -->
+        <!-- 主标签栏 -->
+        <div class="main-tabs">
+            <button class="main-tab active" data-tab="hours">📊 工时统计</button>
+            <button class="main-tab" data-tab="records">📋 记录</button>
+            <button class="main-tab" data-tab="plans">📝 计划</button>
+            <button class="main-tab" data-tab="exercise">🏃 运动</button>
+        </div>
+
+        <!-- 内容区域 -->
         <div class="card">
-            <div class="tabs">
-                <button class="tab active">每日</button>
-                <button class="tab">每周</button>
-                <button class="tab">每月</button>
-                <button class="tab">每年</button>
-                <button class="tab">记录</button>
-                <button class="tab">计划</button>
+            <!-- 工时统计 -->
+            <div id="hoursSection">
+                <div class="sub-tabs">
+                    <button class="sub-tab active" data-tab="daily">每日</button>
+                    <button class="sub-tab" data-tab="weekly">每周</button>
+                    <button class="sub-tab" data-tab="monthly">每月</button>
+                    <button class="sub-tab" data-tab="yearly">每年</button>
+                </div>
+                <div class="chart-container">
+                    <canvas id="hoursChart"></canvas>
+                </div>
+                <div id="summaryList" class="summary-list"></div>
             </div>
-            <div class="chart-container">
-                <canvas id="hoursChart"></canvas>
+
+            <!-- 记录 -->
+            <div id="recordsSection" style="display:none;">
+                <div id="recordsList" class="summary-list"></div>
             </div>
-            <div id="summaryList" class="summary-list"></div>
-            <div id="plansPanel" style="display:none;">
-                <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
-                    <input type="text" id="planTitleInput" placeholder="计划名称" style="flex:1;min-width:150px;border:1px solid #d9d9d9;border-radius:8px;padding:8px 12px;font-size:14px;">
-                    <input type="date" id="planDeadlineInput" style="border:1px solid #d9d9d9;border-radius:8px;padding:8px 12px;font-size:14px;">
-                    <button class="btn btn-primary btn-sm" onclick="addPlan()">添加计划</button>
+
+            <!-- 计划 -->
+            <div id="plansSection" style="display:none;">
+                <div class="exe-form-row">
+                    <div class="field" style="flex:1;">
+                        <input type="text" id="planTitleInput" placeholder="计划名称">
+                    </div>
+                    <div class="field">
+                        <input type="date" id="planDeadlineInput">
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="addPlan()">添加</button>
                 </div>
                 <div id="plansList"></div>
+            </div>
+
+            <!-- 运动记录 -->
+            <div id="exerciseSection" style="display:none;">
+                <div class="exe-form-row">
+                    <div class="field">
+                        <label>日期</label>
+                        <input type="date" id="exeDate">
+                    </div>
+                    <div class="field">
+                        <label>开始</label>
+                        <input type="time" id="exeStart" value="08:00">
+                    </div>
+                    <div class="field">
+                        <label>结束 <span style="color:#999;font-weight:400;">(选填)</span></label>
+                        <input type="time" id="exeEnd">
+                    </div>
+                    <div class="field">
+                        <label>项目</label>
+                        <select id="exeType">
+                            <option>跑步</option>
+                            <option>游泳</option>
+                            <option>骑行</option>
+                            <option>健身</option>
+                            <option>瑜伽</option>
+                            <option>篮球</option>
+                            <option>足球</option>
+                            <option>羽毛球</option>
+                            <option>乒乓球</option>
+                            <option>散步</option>
+                            <option>其他</option>
+                        </select>
+                    </div>
+                    <div class="field" style="flex:1;">
+                        <label>备注</label>
+                        <input type="text" id="exeNotes" placeholder="可选备注">
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="addExercise()" style="margin-bottom:0;">添加</button>
+                </div>
+                <div id="exerciseList" class="exe-list"></div>
             </div>
         </div>
     </div>
@@ -307,7 +423,8 @@
 
     <script>
         let chart = null;
-        let currentTab = 'daily';
+        let currentMainTab = 'hours';
+        let currentSubTab = 'daily';
         let pendingDeleteId = null;
         let statusTimer = null;
 
@@ -440,7 +557,7 @@
                 if (d.success) {
                     showToast('✅ 开始工作！' + d.time);
                     refreshStatus();
-                    renderChart(currentTab);
+                    renderChart(currentSubTab);
                 } else {
                     showToast('❌ ' + d.message, true);
                 }
@@ -460,7 +577,7 @@
             if (d.success) {
                 showToast('✅ 结束工作！本次 ' + d.hours + ' 小时');
                 refreshStatus();
-                renderChart(currentTab);
+                renderChart(currentSubTab);
             } else {
                 showToast('❌ ' + d.message, true);
             }
@@ -499,7 +616,7 @@
                 const h = d.hours ? ` (${d.hours} 小时)` : '';
                 showToast(`✅ ${date} 补录成功${h}`);
                 refreshStatus();
-                renderChart(currentTab);
+                renderChart(currentSubTab);
             } else {
                 showToast('❌ ' + d.message, true);
             }
@@ -525,18 +642,39 @@
             if (d.success) {
                 showToast('✅ 记录已删除');
                 refreshStatus();
-                renderChart(currentTab);
+                renderChart(currentSubTab);
             } else {
                 showToast('❌ ' + d.message, true);
             }
         }
 
         // ---------- 图表 ----------
-        function switchTab(tab) {
-            currentTab = tab;
-            const nameMap = { daily: '每日', weekly: '每周', monthly: '每月', yearly: '每年', records: '记录', plans: '计划' };
-            document.querySelectorAll('.tab').forEach(el => {
-                el.classList.toggle('active', el.textContent.trim() === nameMap[tab]);
+        function switchMainTab(tab) {
+            currentMainTab = tab;
+            document.querySelectorAll('.main-tab').forEach(el => {
+                el.classList.toggle('active', el.dataset.tab === tab);
+            });
+            document.getElementById('hoursSection').style.display = tab === 'hours' ? 'block' : 'none';
+            document.getElementById('recordsSection').style.display = tab === 'records' ? 'block' : 'none';
+            document.getElementById('plansSection').style.display = tab === 'plans' ? 'block' : 'none';
+            document.getElementById('exerciseSection').style.display = tab === 'exercise' ? 'block' : 'none';
+
+            if (tab === 'hours') {
+                switchSubTab(currentSubTab);
+            } else if (tab === 'records') {
+                loadRecordsView();
+            } else if (tab === 'plans') {
+                loadPlans();
+            } else if (tab === 'exercise') {
+                setDefaultExeDate();
+                loadExercises();
+            }
+        }
+
+        function switchSubTab(tab) {
+            currentSubTab = tab;
+            document.querySelectorAll('.sub-tab').forEach(el => {
+                el.classList.toggle('active', el.dataset.tab === tab);
             });
             renderChart(tab);
         }
@@ -544,25 +682,12 @@
         async function renderChart(tab) {
             const ctx = document.getElementById('hoursChart').getContext('2d');
             const summaryContainer = document.getElementById('summaryList');
-            const plansPanel = document.getElementById('plansPanel');
-
-            // 计划标签
-            if (tab === 'plans') {
-                document.getElementById('hoursChart').style.display = 'none';
-                summaryContainer.innerHTML = '';
-                plansPanel.style.display = 'block';
-                loadPlans();
-                return;
-            } else {
-                plansPanel.style.display = 'none';
-            }
 
             let endpoint, color;
             if (tab === 'daily') { endpoint = '/api/hours/daily'; color = '#1890ff'; }
             else if (tab === 'weekly') { endpoint = '/api/hours/weekly'; color = '#52c41a'; }
             else if (tab === 'monthly') { endpoint = '/api/hours/monthly'; color = '#722ed1'; }
             else if (tab === 'yearly') { endpoint = '/api/hours/yearly'; color = '#eb2f96'; }
-            else { endpoint = '/api/records/all'; color = '#fa8c16'; }
 
             const res = await apiFetch(endpoint);
             if (!res) return;
@@ -606,48 +731,7 @@
                 }
             });
 
-            // 隐藏 chart（记录标签不需要图表）
-            const chartContainer = document.getElementById('hoursChart');
-            if (tab === 'records') {
-                chartContainer.style.display = 'none';
-            } else {
-                chartContainer.style.display = 'block';
-            }
-
             // 摘要信息
-            if (tab === 'records') {
-                // 记录列表
-                if (data.length === 0) {
-                    summaryContainer.innerHTML = '<div class="no-data">暂无打卡记录</div>';
-                } else {
-                    let html = '';
-                    const weekdayMap = ['周日','周一','周二','周三','周四','周五','周六'];
-                    data.forEach(d => {
-                        const dObj = new Date(d.date + 'T00:00:00+08:00');
-                        const label = d.date + ' ' + weekdayMap[dObj.getDay()];
-                        html += '<div class="day-group">';
-                        html += '<div class="day-header">' +
-                            '<span>' + label + '</span>' +
-                            '<span style="color:#52c41a;">共 ' + d.total_hours.toFixed(2) + 'h</span>' +
-                            '</div>';
-                        d.sessions.forEach(s => {
-                            const times = s.check_out
-                                ? s.check_in + ' - ' + s.check_out
-                                : s.check_in + ' (未结束)';
-                            html += '<div class="session-item">' +
-                                '<div class="session-times">' + times + '</div>' +
-                                '<div class="session-text">' + (s.summary || '—') + '</div>' +
-                                '<div class="session-hours">' + s.hours.toFixed(2) + 'h</div>' +
-                                '<button class="logout-btn" style="padding:2px 6px;font-size:12px;" onclick="requestDelete(' + s.id + ')">✕</button>' +
-                                '</div>';
-                        });
-                        html += '</div>';
-                    });
-                    summaryContainer.innerHTML = html;
-                }
-                return;
-            }
-
             if (tab === 'daily') {
                 const items = data.filter(d => d.sessions && d.sessions.length > 0);
                 if (items.length === 0) {
@@ -686,6 +770,42 @@
                 info += '</div>';
                 summaryContainer.innerHTML = info;
             }
+        }
+
+        // ---------- 记录 ----------
+        async function loadRecordsView() {
+            const r = await apiFetch('/api/records/all');
+            if (!r) return;
+            const data = await r.json();
+            const container = document.getElementById('recordsList');
+            if (data.length === 0) {
+                container.innerHTML = '<div class="no-data">暂无打卡记录</div>';
+                return;
+            }
+            let html = '';
+            const weekdayMap = ['周日','周一','周二','周三','周四','周五','周六'];
+            data.forEach(d => {
+                const dObj = new Date(d.date + 'T00:00:00+08:00');
+                const label = d.date + ' ' + weekdayMap[dObj.getDay()];
+                html += '<div class="day-group">';
+                html += '<div class="day-header">' +
+                    '<span>' + label + '</span>' +
+                    '<span style="color:#52c41a;">共 ' + d.total_hours.toFixed(2) + 'h</span>' +
+                    '</div>';
+                d.sessions.forEach(s => {
+                    const times = s.check_out
+                        ? s.check_in + ' - ' + s.check_out
+                        : s.check_in + ' (未结束)';
+                    html += '<div class="session-item">' +
+                        '<div class="session-times">' + times + '</div>' +
+                        '<div class="session-text">' + (s.summary || '—') + '</div>' +
+                        '<div class="session-hours">' + s.hours.toFixed(2) + 'h</div>' +
+                        '<button class="logout-btn" style="padding:2px 6px;font-size:12px;" onclick="requestDelete(' + s.id + ')">✕</button>' +
+                        '</div>';
+                });
+                html += '</div>';
+            });
+            container.innerHTML = html;
         }
 
         // ---------- 工作计划 ----------
@@ -766,13 +886,95 @@
             }
         }
 
+        // ---------- 运动记录 ----------
+        function setDefaultExeDate() {
+            const now = new Date();
+            const beijing = new Date(now.getTime() + 8 * 3600000);
+            document.getElementById('exeDate').value = beijing.toISOString().split('T')[0];
+        }
+
+        async function loadExercises() {
+            const r = await apiFetch('/api/exercises');
+            if (!r) return;
+            const data = await r.json();
+            const container = document.getElementById('exerciseList');
+            const keys = Object.keys(data);
+            if (keys.length === 0) {
+                container.innerHTML = '<div class="no-data">暂无运动记录</div>';
+                return;
+            }
+            let html = '';
+            keys.forEach(date => {
+                html += '<div class="exe-day"><div class="exe-day-header">' + date + '</div>';
+                data[date].forEach(e => {
+                    const timeRange = e.end_time ? e.start_time + ' - ' + e.end_time : e.start_time + ' (进行中)';
+                    html += '<div class="exe-item">' +
+                        '<span class="exe-time">' + timeRange + '</span>' +
+                        '<span class="exe-type">' + e.exercise_type + '</span>' +
+                        '<span class="exe-notes">' + (e.notes || '') + '</span>' +
+                        '<button class="logout-btn" style="padding:2px 6px;font-size:12px;" onclick="deleteExercise(' + e.id + ')">✕</button>' +
+                        '</div>';
+                });
+                html += '</div>';
+            });
+            container.innerHTML = html;
+        }
+
+        async function addExercise() {
+            const date = document.getElementById('exeDate').value;
+            const start_time = document.getElementById('exeStart').value;
+            const end_time = document.getElementById('exeEnd').value;
+            const exercise_type = document.getElementById('exeType').value;
+            const notes = document.getElementById('exeNotes').value.trim();
+
+            if (!date || !start_time || !exercise_type) {
+                showToast('请填写日期、开始时间和运动项目', true);
+                return;
+            }
+
+            const r = await apiFetch('/api/exercises', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date, start_time, end_time: end_time || null, exercise_type, notes }),
+            });
+            if (!r) return;
+            const d = await r.json();
+            if (d.success) {
+                document.getElementById('exeEnd').value = '';
+                document.getElementById('exeNotes').value = '';
+                showToast('✅ 运动记录已添加');
+                loadExercises();
+            } else {
+                showToast('❌ ' + d.message, true);
+            }
+        }
+
+        async function deleteExercise(id) {
+            if (!confirm('确定要删除这条运动记录吗？')) return;
+            const r = await apiFetch('/api/exercises/' + id, { method: 'DELETE' });
+            if (!r) return;
+            const d = await r.json();
+            if (d.success) {
+                showToast('✅ 运动记录已删除');
+                loadExercises();
+            } else {
+                showToast('❌ ' + d.message, true);
+            }
+        }
+
         // ---------- 初始化 ----------
         async function init() {
             await checkAuth();
 
-            document.querySelectorAll('.tab').forEach((el, i) => {
-                const tabs = ['daily', 'weekly', 'monthly', 'yearly', 'records', 'plans'];
-                el.onclick = () => switchTab(tabs[i]);
+            // 主标签切换
+            document.querySelectorAll('.main-tab').forEach(el => {
+                el.onclick = () => switchMainTab(el.dataset.tab);
+                el.style.cursor = 'pointer';
+            });
+
+            // 子标签切换（工时统计）
+            document.querySelectorAll('.sub-tab').forEach(el => {
+                el.onclick = () => switchSubTab(el.dataset.tab);
                 el.style.cursor = 'pointer';
             });
 
@@ -781,6 +983,15 @@
                 el.addEventListener('click', e => {
                     if (e.target === el) el.classList.remove('active');
                 });
+            });
+
+            // 回车添加运动
+            document.getElementById('exeNotes').addEventListener('keydown', e => {
+                if (e.key === 'Enter') addExercise();
+            });
+            // 计划名称回车添加
+            document.getElementById('planTitleInput').addEventListener('keydown', e => {
+                if (e.key === 'Enter') addPlan();
             });
 
             // 定时刷新
@@ -798,12 +1009,9 @@
             }, 30000);
 
             await refreshStatus();
-            renderChart('daily');
-
-            // 计划名称回车添加
-            document.getElementById('planTitleInput').addEventListener('keydown', e => {
-                if (e.key === 'Enter') addPlan();
-            });
+            // 默认显示工时统计-每日
+            switchMainTab('hours');
+            switchSubTab('daily');
         }
 
         init();
