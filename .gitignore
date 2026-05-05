@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+attendance.db
+*.db
+.vscode/
+.claude/
+*.docx
