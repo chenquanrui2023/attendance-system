@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>打卡系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            min-height: 100vh;
+        }
+        .container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+        h1 { font-size: 24px; margin-bottom: 24px; display: flex; align-items: center; gap: 10px; }
+
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.08);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .clock-in-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            text-align: center;
+        }
+        .status-text { font-size: 16px; color: #666; }
+        .status-text strong { color: #333; }
+        .time-display { font-size: 13px; color: #999; }
+
+        .btn {
+            border: none;
+            border-radius: 50px;
+            padding: 14px 48px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all .2s;
+            min-width: 200px;
+        }
+        .btn:active { transform: scale(.97); }
+        .btn-primary { background: #1890ff; color: #fff; }
+        .btn-primary:hover { background: #40a9ff; }
+        .btn-primary:disabled { background: #d9d9d9; cursor: not-allowed; }
+        .btn-success { background: #52c41a; color: #fff; }
+        .btn-success:hover { background: #73d13d; }
+        .btn-danger { background: #ff4d4f; color: #fff; }
+        .btn-danger:hover { background: #ff7875; }
+        .btn-default { background: #f5f5f5; color: #333; border: 1px solid #d9d9d9; }
+        .btn-default:hover { background: #e8e8e8; }
+        .btn-sm { padding: 6px 16px; font-size: 13px; min-width: auto; border-radius: 6px; }
+        .btn-xs { padding: 3px 10px; font-size: 12px; min-width: auto; border-radius: 4px; }
+
+        .hours-badge {
+            display: inline-block;
+            background: #f6ffed;
+            border: 1px solid #b7eb8f;
+            border-radius: 8px;
+            padding: 6px 16px;
+            color: #52c41a;
+            font-size: 14px;
+        }
+
+        .action-row {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.45);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: #fff;
+            border-radius: 12px;
+            padding: 28px;
+            width: 90%;
+            max-width: 480px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.15);
+        }
+        .modal h2 { font-size: 20px; margin-bottom: 12px; }
+        .modal p { color: #666; font-size: 14px; margin-bottom: 16px; }
+        .modal label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 4px; margin-top: 12px; }
+        .modal input, .modal textarea, .modal select {
+            width: 100%;
+            border: 1px solid #d9d9d9;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        .modal input:focus, .modal textarea:focus {
+            outline: none; border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24,144,255,.2);
+        }
+        .modal textarea { min-height: 80px; resize: vertical; }
+        .modal .form-row { display: flex; gap: 12px; }
+        .modal .form-row > div { flex: 1; }
+        .modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; }
+        .modal-actions .btn { padding: 8px 24px; font-size: 14px; min-width: auto; }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 8px;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 16px;
+            background: #f0f2f5;
+        }
+        .tab {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all .2s;
+            border: none;
+            background: transparent;
+            color: #666;
+        }
+        .tab.active { background: #1890ff; color: #fff; }
+        .tab:hover:not(.active) { background: #e6f7ff; }
+
+        .chart-container { position: relative; height: 280px; }
+
+        /* Summary list */
+        .summary-list { margin-top: 16px; }
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #f0f0f0;
+            gap: 12px;
+        }
+        .summary-item:last-child { border-bottom: none; }
+        .summary-date { font-size: 13px; color: #999; white-space: nowrap; min-width: 100px; }
+        .summary-times { font-size: 12px; color: #bbb; white-space: nowrap; }
+        .summary-text { flex: 1; font-size: 14px; color: #333; line-height: 1.5; }
+        .summary-hours { font-size: 13px; color: #52c41a; white-space: nowrap; min-width: 50px; text-align: right; }
+        .summary-actions { display: flex; gap: 4px; }
+        .delete-btn {
+            background: none; border: none; color: #ff4d4f; cursor: pointer;
+            font-size: 16px; padding: 2px 6px; border-radius: 4px; opacity: .5;
+            transition: opacity .2s;
+        }
+        .delete-btn:hover { opacity: 1; background: #fff1f0; }
+
+        .no-data { text-align: center; color: #999; padding: 40px 0; font-size: 14px; }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .header h1 { font-size: 24px; display: flex; align-items: center; gap: 10px; margin-bottom: 0; }
+        .user-info { display: flex; align-items: center; gap: 12px; font-size: 14px; color: #666; }
+        .user-info .username { font-weight: 600; color: #333; }
+        .logout-btn {
+            background: none; border: 1px solid #d9d9d9; border-radius: 6px;
+            padding: 4px 12px; font-size: 13px; cursor: pointer; color: #666;
+            transition: all .2s;
+        }
+        .logout-btn:hover { border-color: #ff4d4f; color: #ff4d4f; }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: #fff;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 2000;
+            opacity: 0;
+            transition: opacity .3s;
+            pointer-events: none;
+        }
+        .toast.show { opacity: 1; }
+        .toast.error { background: #ff4d4f; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⏰ 打卡系统</h1>
+            <div class="user-info">
+                <span>👤 <span class="username" id="usernameDisplay">用户</span></span>
+                <button class="logout-btn" onclick="logout()">退出</button>
+            </div>
+        </div>
+
+        <!-- 打卡区域 -->
+        <div class="card">
+            <div class="clock-in-area">
+                <div class="status-text" id="statusText">加载中...</div>
+                <div class="time-display" id="timeDisplay"></div>
+                <button class="btn btn-primary" id="mainBtn" onclick="handleMainAction()">上班打卡</button>
+                <div id="todayHours" style="display:none;">
+                    <span class="hours-badge">今日已工作: <span id="todayHoursValue">0</span> 小时</span>
+                </div>
+                <div class="action-row">
+                    <button class="btn btn-default btn-sm" onclick="openBackfillModal()">📝 补录</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 图表区域 -->
+        <div class="card">
+            <div class="tabs">
+                <button class="tab active">每日</button>
+                <button class="tab">每周</button>
+                <button class="tab">每月</button>
+            </div>
+            <div class="chart-container">
+                <canvas id="hoursChart"></canvas>
+            </div>
+            <div id="summaryList" class="summary-list"></div>
+        </div>
+    </div>
+
+    <!-- 下班打卡弹窗 -->
+    <div class="modal-overlay" id="summaryModal">
+        <div class="modal">
+            <h2>下班打卡</h2>
+            <p>请填写今天的工作摘要：</p>
+            <textarea id="summaryInput" placeholder="今天完成了哪些工作？"></textarea>
+            <div class="modal-actions">
+                <button class="btn btn-default" onclick="closeModal('summaryModal')">跳过</button>
+                <button class="btn btn-primary" onclick="submitCheckOut()">确认下班</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 补录弹窗 -->
+    <div class="modal-overlay" id="backfillModal">
+        <div class="modal">
+            <h2>📝 补录打卡</h2>
+            <p>补填某一天的打卡记录</p>
+            <label>日期</label>
+            <input type="date" id="backfillDate">
+            <div class="form-row">
+                <div>
+                    <label>上班时间</label>
+                    <input type="time" id="backfillIn" value="09:00">
+                </div>
+                <div>
+                    <label>下班时间 <span style="color:#999;font-weight:400;">(可选)</span></label>
+                    <input type="time" id="backfillOut">
+                </div>
+            </div>
+            <label>工作摘要 <span style="color:#999;font-weight:400;">(可选)</span></label>
+            <textarea id="backfillSummary" placeholder="当天完成了哪些工作？"></textarea>
+            <div class="modal-actions">
+                <button class="btn btn-default" onclick="closeModal('backfillModal')">取消</button>
+                <button class="btn btn-primary" onclick="submitBackfill()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 删除确认弹窗 -->
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal" style="max-width:380px;">
+            <h2>🗑️ 确认删除</h2>
+            <p id="deleteConfirmText">确定要删除这条记录吗？</p>
+            <div class="modal-actions">
+                <button class="btn btn-default" onclick="closeModal('deleteModal')">取消</button>
+                <button class="btn btn-danger" id="deleteConfirmBtn" onclick="confirmDelete()">删除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        let chart = null;
+        let currentTab = 'daily';
+        let pendingDeleteDate = null;
+
+        // ---------- Auth ----------
+        async function checkAuth() {
+            const r = await fetch('/api/me');
+            if (!r.ok) { window.location.href = '/login'; return; }
+            const d = await r.json();
+            document.getElementById('usernameDisplay').textContent = d.username;
+        }
+
+        async function logout() {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/login';
+        }
+
+        // 包装 fetch 自动处理 401
+        async function apiFetch(url, options = {}) {
+            const r = await fetch(url, options);
+            if (r.status === 401) { window.location.href = '/login'; return null; }
+            return r;
+        }
+
+        // ---------- Toast ----------
+        function showToast(msg, isError) {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.className = 'toast' + (isError ? ' error' : '');
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 2500);
+        }
+
+        // ---------- Modal ----------
+        function openModal(id) { document.getElementById(id).classList.add('active'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+        // ---------- 打卡 ----------
+        async function refreshStatus() {
+            const res = await apiFetch('/api/status');
+            if (!res) return;
+            const data = await res.json();
+            const statusText = document.getElementById('statusText');
+            const timeDisplay = document.getElementById('timeDisplay');
+            const mainBtn = document.getElementById('mainBtn');
+            const todayHours = document.getElementById('todayHours');
+
+            if (!data.checked_in) {
+                statusText.innerHTML = '今日尚未打卡';
+                timeDisplay.textContent = '';
+                mainBtn.textContent = '📌 上班打卡';
+                mainBtn.className = 'btn btn-primary';
+                mainBtn.disabled = false;
+                todayHours.style.display = 'none';
+            } else if (!data.checked_out) {
+                statusText.innerHTML = '已上班 <strong>' + data.check_in_time + '</strong>';
+                mainBtn.textContent = '🔓 下班打卡';
+                mainBtn.className = 'btn btn-danger';
+                mainBtn.disabled = false;
+                todayHours.style.display = 'block';
+                document.getElementById('todayHoursValue').textContent = data.current_hours;
+            } else {
+                statusText.innerHTML = '已完成打卡 (上班 <strong>' + data.check_in_time +
+                    '</strong> → 下班 <strong>' + data.check_out_time + '</strong>)';
+                mainBtn.textContent = '✅ 今日已完成';
+                mainBtn.className = 'btn btn-primary';
+                mainBtn.disabled = true;
+                todayHours.style.display = 'block';
+                document.getElementById('todayHoursValue').textContent = data.current_hours || '0';
+            }
+
+            timeDisplay.textContent = data.check_in_time
+                ? '打卡时间: ' + data.check_in_time + (data.check_out_time ? ' → ' + data.check_out_time : ' (进行中)')
+                : '';
+        }
+
+        async function handleMainAction() {
+            const btn = document.getElementById('mainBtn');
+            if (btn.disabled) return;
+
+            const res = await fetch('/api/status');
+            const data = await res.json();
+
+            if (!data.checked_in) {
+                const r = await apiFetch('/api/check_in', { method: 'POST' });
+                if (!r) return;
+                const d = await r.json();
+                if (d.success) {
+                    showToast('✅ 上班打卡成功！' + d.time);
+                    refreshStatus();
+                    renderChart(currentTab);
+                } else {
+                    showToast('❌ ' + d.message, true);
+                }
+            } else if (!data.checked_out) {
+                openModal('summaryModal');
+                document.getElementById('summaryInput').value = '';
+                setTimeout(() => document.getElementById('summaryInput').focus(), 100);
+            }
+        }
+
+        async function submitCheckOut(skipSummary) {
+            const summary = skipSummary ? '' : document.getElementById('summaryInput').value.trim();
+            closeModal('summaryModal');
+            const r = await apiFetch('/api/check_out', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ summary }),
+            });
+            if (!r) return;
+            const d = await r.json();
+            if (d.success) {
+                showToast('✅ 下班打卡成功！今日工作 ' + d.hours + ' 小时');
+                refreshStatus();
+                renderChart(currentTab);
+            } else {
+                showToast('❌ ' + d.message, true);
+            }
+        }
+
+        // ---------- 补录 ----------
+        function openBackfillModal() {
+            document.getElementById('backfillDate').value = new Date().toISOString().split('T')[0];
+            if (!document.getElementById('backfillOut').value) {
+                // 默认下班时间 = 上班 + 8h
+                document.getElementById('backfillOut').value = '18:00';
+            }
+            openModal('backfillModal');
+        }
+
+        async function submitBackfill() {
+            const date = document.getElementById('backfillDate').value;
+            const check_in = document.getElementById('backfillIn').value;
+            const check_out = document.getElementById('backfillOut').value;
+            const summary = document.getElementById('backfillSummary').value.trim();
+
+            if (!date || !check_in) {
+                showToast('请填写日期和上班时间', true);
+                return;
+            }
+
+            const r = await apiFetch('/api/backfill', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date, check_in, check_out: check_out || null, summary }),
+            });
+            if (!r) return;
+            const d = await r.json();
+            closeModal('backfillModal');
+
+            if (d.success) {
+                const hours = d.hours ? ` (${d.hours} 小时)` : '';
+                showToast(`✅ ${date} 补录成功${hours}`);
+                refreshStatus();
+                renderChart(currentTab);
+            } else {
+                showToast('❌ ' + d.message, true);
+            }
+        }
+
+        // ---------- 删除 ----------
+        function requestDelete(date, label) {
+            pendingDeleteDate = date;
+            document.getElementById('deleteConfirmText').textContent =
+                `确定要删除 ${label} 的打卡记录吗？`;
+            openModal('deleteModal');
+        }
+
+        async function confirmDelete() {
+            if (!pendingDeleteDate) return;
+            closeModal('deleteModal');
+
+            const r = await apiFetch(`/api/records/${pendingDeleteDate}`, { method: 'DELETE' });
+            if (!r) return;
+            const d = await r.json();
+            pendingDeleteDate = null;
+
+            if (d.success) {
+                showToast('✅ 记录已删除');
+                refreshStatus();
+                renderChart(currentTab);
+            } else {
+                showToast('❌ ' + d.message, true);
+            }
+        }
+
+        // ---------- 图表 ----------
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(el => {
+                el.classList.toggle('active', el.textContent.trim() ===
+                    ({ daily: '每日', weekly: '每周', monthly: '每月' }[tab]));
+            });
+            renderChart(tab);
+        }
+
+        async function renderChart(tab) {
+            const ctx = document.getElementById('hoursChart').getContext('2d');
+            const summaryContainer = document.getElementById('summaryList');
+
+            let endpoint, color;
+            if (tab === 'daily') { endpoint = '/api/hours/daily'; color = '#1890ff'; }
+            else if (tab === 'weekly') { endpoint = '/api/hours/weekly'; color = '#52c41a'; }
+            else { endpoint = '/api/hours/monthly'; color = '#722ed1'; }
+
+            const res = await apiFetch(endpoint);
+            if (!res) return;
+            const data = await res.json();
+
+            if (chart) chart.destroy();
+
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.map(d => d.label || d.range),
+                    datasets: [{
+                        label: '小时',
+                        data: data.map(d => d.hours),
+                        backgroundColor: color + 'cc',
+                        borderColor: color,
+                        borderWidth: 1,
+                        borderRadius: 4,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => ctx.parsed.y + ' 小时'
+                                    + (data[ctx.dataIndex].days !== undefined
+                                        ? ' (' + data[ctx.dataIndex].days + ' 天)' : '')
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, title: { display: true, text: '小时' }, ticks: { callback: v => v + 'h' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+
+            // 摘要信息
+            if (tab === 'daily') {
+                const items = data.filter(d => d.check_in);
+                if (items.length === 0) {
+                    summaryContainer.innerHTML = '<div class="no-data">本周暂无打卡记录</div>';
+                } else {
+                    let html = '';
+                    items.forEach(d => {
+                        const hours = d.hours ? d.hours.toFixed(2) : '0';
+                        const times = d.check_out
+                            ? d.check_in + ' - ' + d.check_out
+                            : (d.check_in ? d.check_in + ' (进行中)' : '');
+                        html += `<div class="summary-item">
+                            <div class="summary-date">${d.label || d.date}</div>
+                            <div class="summary-times">${times}</div>
+                            <div class="summary-text">${d.summary || '—'}</div>
+                            <div class="summary-hours">${hours}h</div>
+                            <div class="summary-actions">
+                                <button class="delete-btn" onclick="requestDelete('${d.date}','${d.label || d.date}')" title="删除">✕</button>
+                            </div>
+                        </div>`;
+                    });
+                    summaryContainer.innerHTML = html;
+                }
+            } else {
+                const totalHours = data.reduce((s, d) => s + d.hours, 0);
+                const daysWorked = data.reduce((s, d) => s + (d.days || 0), 0);
+                const nonZero = data.filter(d => d.hours > 0).length;
+                let info = `<div class="no-data">总计 ${totalHours.toFixed(2)} 小时`;
+                if (daysWorked) info += `，出勤 ${daysWorked} 天`;
+                if (nonZero) info += `，平均 ${(totalHours / nonZero).toFixed(2)} 小时/${tab === 'weekly' ? '周' : '月'}`;
+                info += '</div>';
+                summaryContainer.innerHTML = info;
+            }
+        }
+
+        // ---------- 初始化 ----------
+        async function init() {
+            await checkAuth();
+            document.querySelectorAll('.tab').forEach((el, i) => {
+                const tabs = ['daily', 'weekly', 'monthly'];
+                el.onclick = () => switchTab(tabs[i]);
+                el.style.cursor = 'pointer';
+            });
+            // 如果已上班，定时刷新今日工时
+            const r = await apiFetch('/api/status');
+            if (!r) return;
+            const data = await r.json();
+            if (data.checked_in && !data.checked_out) {
+                setInterval(async () => {
+                    const r2 = await apiFetch('/api/status');
+                    if (!r2) return;
+                    const d2 = await r2.json();
+                    document.getElementById('todayHoursValue').textContent = d2.current_hours;
+                }, 30000);
+            }
+
+            // 点击弹窗遮罩关闭
+            document.querySelectorAll('.modal-overlay').forEach(el => {
+                el.addEventListener('click', e => {
+                    if (e.target === el) el.classList.remove('active');
+                });
+            });
+
+            await refreshStatus();
+            renderChart('daily');
+        }
+
+        init();
+    </script>
+</body>
+</html>

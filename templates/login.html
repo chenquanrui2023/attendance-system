@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>打卡系统 - 登录</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .card {
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0,0,0,.1);
+            padding: 40px;
+            width: 380px;
+            max-width: 90vw;
+        }
+        h1 { font-size: 24px; text-align: center; margin-bottom: 8px; }
+        .subtitle { text-align: center; color: #999; font-size: 14px; margin-bottom: 28px; }
+
+        .tab-bar {
+            display: flex;
+            background: #f5f5f5;
+            border-radius: 8px;
+            padding: 3px;
+            margin-bottom: 24px;
+        }
+        .tab {
+            flex: 1;
+            padding: 8px;
+            text-align: center;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all .2s;
+            color: #666;
+        }
+        .tab.active { background: #fff; color: #1890ff; font-weight: 600; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+        .tab:hover:not(.active) { color: #333; }
+
+        .form { display: none; }
+        .form.active { display: block; }
+
+        label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; color: #333; }
+        input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #d9d9d9;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 16px;
+            transition: border-color .2s;
+        }
+        input:focus { outline: none; border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24,144,255,.2); }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all .2s;
+        }
+        .btn-primary { background: #1890ff; color: #fff; }
+        .btn-primary:hover { background: #40a9ff; }
+        .btn-primary:active { transform: scale(.98); }
+        .btn-primary:disabled { background: #d9d9d9; cursor: not-allowed; }
+
+        .error-msg { color: #ff4d4f; font-size: 13px; margin-top: -8px; margin-bottom: 12px; display: none; }
+        .error-msg.show { display: block; }
+
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: #fff;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 2000;
+            opacity: 0;
+            transition: opacity .3s;
+            pointer-events: none;
+        }
+        .toast.show { opacity: 1; }
+        .toast.error { background: #ff4d4f; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>⏰ 打卡系统</h1>
+        <p class="subtitle">登录后即可记录工作时间</p>
+
+        <div class="tab-bar">
+            <button class="tab active" onclick="switchTab('login')">登录</button>
+            <button class="tab" onclick="switchTab('register')">注册</button>
+        </div>
+
+        <!-- 登录表单 -->
+        <div class="form active" id="loginForm">
+            <label>用户名</label>
+            <input type="text" id="loginUsername" placeholder="输入用户名" autocomplete="username">
+            <label>密码</label>
+            <input type="password" id="loginPassword" placeholder="输入密码" autocomplete="current-password">
+            <div class="error-msg" id="loginError"></div>
+            <button class="btn btn-primary" id="loginBtn" onclick="submitLogin()">登录</button>
+        </div>
+
+        <!-- 注册表单 -->
+        <div class="form" id="registerForm">
+            <label>用户名</label>
+            <input type="text" id="regUsername" placeholder="2-20个字符" autocomplete="off">
+            <label>密码</label>
+            <input type="password" id="regPassword" placeholder="至少4个字符" autocomplete="new-password">
+            <div class="error-msg" id="regError"></div>
+            <button class="btn btn-primary" id="regBtn" onclick="submitRegister()">注册</button>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.form').forEach(f => f.classList.remove('active'));
+            if (tab === 'login') {
+                document.querySelector('.tab:first-child').classList.add('active');
+                document.getElementById('loginForm').classList.add('active');
+            } else {
+                document.querySelector('.tab:last-child').classList.add('active');
+                document.getElementById('registerForm').classList.add('active');
+            }
+            document.getElementById('loginError').classList.remove('show');
+            document.getElementById('regError').classList.remove('show');
+        }
+
+        function showError(id, msg) {
+            const el = document.getElementById(id);
+            el.textContent = msg;
+            el.classList.add('show');
+        }
+
+        function showToast(msg, isError) {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.className = 'toast' + (isError ? ' error' : '');
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 2500);
+        }
+
+        async function submitLogin() {
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            if (!username || !password) {
+                showError('loginError', '请填写用户名和密码');
+                return;
+            }
+
+            const btn = document.getElementById('loginBtn');
+            btn.disabled = true;
+            btn.textContent = '登录中...';
+            document.getElementById('loginError').classList.remove('show');
+
+            try {
+                const r = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password }),
+                });
+                const d = await r.json();
+                if (d.success) {
+                    showToast('✅ 登录成功');
+                    setTimeout(() => { window.location.href = '/'; }, 300);
+                } else {
+                    showError('loginError', d.message);
+                }
+            } catch(e) {
+                showError('loginError', '网络错误');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '登录';
+            }
+        }
+
+        async function submitRegister() {
+            const username = document.getElementById('regUsername').value.trim();
+            const password = document.getElementById('regPassword').value;
+            if (!username || !password) {
+                showError('regError', '请填写用户名和密码');
+                return;
+            }
+
+            const btn = document.getElementById('regBtn');
+            btn.disabled = true;
+            btn.textContent = '注册中...';
+            document.getElementById('regError').classList.remove('show');
+
+            try {
+                const r = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password }),
+                });
+                const d = await r.json();
+                if (d.success) {
+                    showToast('✅ 注册成功');
+                    setTimeout(() => { window.location.href = '/'; }, 300);
+                } else {
+                    showError('regError', d.message);
+                }
+            } catch(e) {
+                showError('regError', '网络错误');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '注册';
+            }
+        }
+
+        // Enter 键提交
+        document.getElementById('loginPassword').addEventListener('keydown', e => {
+            if (e.key === 'Enter') submitLogin();
+        });
+        document.getElementById('regPassword').addEventListener('keydown', e => {
+            if (e.key === 'Enter') submitRegister();
+        });
+    </script>
+</body>
+</html>
