@@ -53,9 +53,8 @@ def init_db():
     conn = get_db()
     cur = conn.cursor()
 
-    # 兼容旧表：删掉重建（新项目没影响）
+    # 建表（保留已有数据，绝不 DROP）
     if IS_POSTGRES:
-        cur.execute("DROP TABLE IF EXISTS attendance_records")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -74,8 +73,17 @@ def init_db():
                 summary TEXT
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS work_plans (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                title VARCHAR(200) NOT NULL,
+                deadline VARCHAR(20),
+                completed INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
     else:
-        cur.execute("DROP TABLE IF EXISTS attendance_records")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,6 +102,22 @@ def init_db():
                 summary TEXT
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS work_plans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                title TEXT NOT NULL,
+                deadline TEXT,
+                completed INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+    # 迁移：添加 avatar 列（已有表则跳过）
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN avatar TEXT DEFAULT NULL")
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
@@ -233,11 +257,186 @@ def logout():
 def me():
     if 'user_id' not in session:
         return jsonify({'logged_in': False}), 401
+    conn = get_db()
+    cur = conn.cursor()
+    if IS_POSTGRES:
+        u = cur.execute('SELECT avatar FROM users WHERE id = %s', (session['user_id'],)).fetchone()
+    else:
+        u = cur.execute('SELECT avatar FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    conn.close()
+    avatar_url = u['avatar'] if u and u['avatar'] else None
     return jsonify({
         'logged_in': True,
         'user_id': session['user_id'],
-        'username': session['username']
+        'username': session['username'],
+        'avatar': avatar_url
     })
+
+
+# ---------- 头像上传 ----------
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/api/avatar', methods=['POST'])
+@login_required
+def upload_avatar():
+    if 'avatar' not in request.files:
+        return jsonify({'success': False, 'message': '请选择图片文件'})
+    file = request.files['avatar']
+    if not file.filename or not allowed_file(file.filename):
+        return jsonify({'success': False, 'message': '不支持的图片格式 (支持 png/jpg/gif/webp)'})
+
+    ext = file.filename.rsplit('.', 1)[1].lower()
+    filename = f'avatar_{session["user_id"]}.{ext}'
+    save_dir = os.path.join(os.path.dirname(__file__), 'static', 'avatars')
+    os.makedirs(save_dir, exist_ok=True)
+    file.save(os.path.join(save_dir, filename))
+
+    avatar_url = f'/static/avatars/{filename}'
+    conn = get_db()
+    cur = conn.cursor()
+    if IS_POSTGRES:
+        cur.execute('UPDATE users SET avatar = %s WHERE id = %s', (avatar_url, session['user_id']))
+    else:
+        cur.execute('UPDATE users SET avatar = ? WHERE id = ?', (avatar_url, session['user_id']))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'avatar': avatar_url})
+
+
+# ---------- 工作计划 ----------
+@app.route('/api/plans', methods=['GET'])
+@login_required
+def list_plans():
+    user_id = session['user_id']
+    conn = get_db()
+    cur = conn.cursor()
+    if IS_POSTGRES:
+        rows = cur.execute(
+            'SELECT * FROM work_plans WHERE user_id = %s ORDER BY completed, deadline, id',
+            (user_id,)
+        ).fetchall()
+    else:
+        rows = cur.execute(
+            'SELECT * FROM work_plans WHERE user_id = ? ORDER BY completed, deadline, id',
+            (user_id,)
+        ).fetchall()
+    conn.close()
+    plans = []
+    for r in rows:
+        plans.append({
+            'id': r['id'],
+            'title': r['title'],
+            'deadline': r['deadline'],
+            'completed': bool(r['completed']),
+            'created_at': str(r['created_at']) if r['created_at'] else None,
+        })
+    return jsonify(plans)
+
+
+@app.route('/api/plans', methods=['POST'])
+@login_required
+def create_plan():
+    user_id = session['user_id']
+    data = request.get_json() or {}
+    title = data.get('title', '').strip()
+    deadline = data.get('deadline', '').strip()
+
+    if not title:
+        return jsonify({'success': False, 'message': '计划名称为必填'})
+    if len(title) > 200:
+        return jsonify({'success': False, 'message': '计划名称不能超过200个字符'})
+
+    conn = get_db()
+    cur = conn.cursor()
+    if IS_POSTGRES:
+        cur.execute(
+            'INSERT INTO work_plans (user_id, title, deadline) VALUES (%s, %s, %s)',
+            (user_id, title, deadline or None)
+        )
+    else:
+        cur.execute(
+            'INSERT INTO work_plans (user_id, title, deadline) VALUES (?, ?, ?)',
+            (user_id, title, deadline or None)
+        )
+    conn.commit()
+    plan_id = cur.lastrowid if not IS_POSTGRES else _get_last_id(cur)
+    conn.close()
+    return jsonify({'success': True, 'id': plan_id})
+
+
+@app.route('/api/plans/<int:plan_id>', methods=['PUT'])
+@login_required
+def update_plan(plan_id):
+    user_id = session['user_id']
+    data = request.get_json() or {}
+    title = data.get('title')
+    deadline = data.get('deadline')
+    completed = data.get('completed')
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    # 验证属于当前用户
+    if IS_POSTGRES:
+        existing = cur.execute(
+            'SELECT id FROM work_plans WHERE id = %s AND user_id = %s', (plan_id, user_id)
+        ).fetchone()
+    else:
+        existing = cur.execute(
+            'SELECT id FROM work_plans WHERE id = ? AND user_id = ?', (plan_id, user_id)
+        ).fetchone()
+    if not existing:
+        conn.close()
+        return jsonify({'success': False, 'message': '未找到该计划'})
+
+    sets = []
+    params = []
+    if title is not None:
+        sets.append('title = %s' if IS_POSTGRES else 'title = ?')
+        params.append(title)
+    if deadline is not None:
+        sets.append('deadline = %s' if IS_POSTGRES else 'deadline = ?')
+        params.append(deadline)
+    if completed is not None:
+        sets.append('completed = %s' if IS_POSTGRES else 'completed = ?')
+        params.append(1 if completed else 0)
+    params.append(plan_id)
+    params.append(user_id)
+
+    if sets:
+        placeholders = ', '.join(sets)
+        if IS_POSTGRES:
+            cur.execute(f'UPDATE work_plans SET {placeholders} WHERE id = %s AND user_id = %s', tuple(params))
+        else:
+            cur.execute(f'UPDATE work_plans SET {placeholders} WHERE id = ? AND user_id = ?', tuple(params))
+        conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/plans/<int:plan_id>', methods=['DELETE'])
+@login_required
+def delete_plan(plan_id):
+    user_id = session['user_id']
+    conn = get_db()
+    cur = conn.cursor()
+    if IS_POSTGRES:
+        cur.execute(
+            'DELETE FROM work_plans WHERE id = %s AND user_id = %s', (plan_id, user_id)
+        )
+    else:
+        cur.execute(
+            'DELETE FROM work_plans WHERE id = ? AND user_id = ?', (plan_id, user_id)
+        )
+    deleted = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    if deleted:
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'message': '未找到该计划'})
 
 
 # ---------- 页面 ----------

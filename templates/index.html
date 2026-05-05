@@ -165,6 +165,16 @@
         }
         .user-info { display: flex; align-items: center; gap: 12px; font-size: 14px; color: #666; }
         .user-info .username { font-weight: 600; color: #333; }
+        .avatar-wrap {
+            width: 36px; height: 36px; border-radius: 50%; overflow: hidden;
+            cursor: pointer; flex-shrink: 0; border: 2px solid #e8e8e8;
+            background: #f5f5f5; display: flex; align-items: center; justify-content: center;
+            position: relative;
+        }
+        .avatar-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .avatar-wrap .avatar-placeholder { font-size: 16px; color: #bbb; }
+        .avatar-wrap:hover { border-color: #1890ff; }
+        .avatar-upload-input { display: none; }
         .logout-btn {
             background: none; border: 1px solid #d9d9d9; border-radius: 6px;
             padding: 4px 12px; font-size: 13px; cursor: pointer; color: #666;
@@ -190,7 +200,12 @@
         <div class="header">
             <h1>⏰ 打卡系统</h1>
             <div class="user-info">
-                <span>👤 <span class="username" id="usernameDisplay">用户</span></span>
+                <div class="avatar-wrap" id="avatarWrap" onclick="document.getElementById('avatarInput').click()" title="点击更换头像">
+                    <span class="avatar-placeholder" id="avatarPlaceholder">👤</span>
+                    <img id="avatarImg" style="display:none;" alt="头像">
+                </div>
+                <input type="file" id="avatarInput" class="avatar-upload-input" accept="image/png,image/jpeg,image/gif,image/webp" onchange="uploadAvatar(this)">
+                <span><span class="username" id="usernameDisplay">用户</span></span>
                 <button class="logout-btn" onclick="logout()">退出</button>
             </div>
         </div>
@@ -219,11 +234,20 @@
                 <button class="tab">每月</button>
                 <button class="tab">每年</button>
                 <button class="tab">记录</button>
+                <button class="tab">计划</button>
             </div>
             <div class="chart-container">
                 <canvas id="hoursChart"></canvas>
             </div>
             <div id="summaryList" class="summary-list"></div>
+            <div id="plansPanel" style="display:none;">
+                <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+                    <input type="text" id="planTitleInput" placeholder="计划名称" style="flex:1;min-width:150px;border:1px solid #d9d9d9;border-radius:8px;padding:8px 12px;font-size:14px;">
+                    <input type="date" id="planDeadlineInput" style="border:1px solid #d9d9d9;border-radius:8px;padding:8px 12px;font-size:14px;">
+                    <button class="btn btn-primary btn-sm" onclick="addPlan()">添加计划</button>
+                </div>
+                <div id="plansList"></div>
+            </div>
         </div>
     </div>
 
@@ -293,6 +317,11 @@
             if (!r.ok) { window.location.href = '/login'; return; }
             const d = await r.json();
             document.getElementById('usernameDisplay').textContent = d.username;
+            if (d.avatar) {
+                document.getElementById('avatarImg').src = d.avatar;
+                document.getElementById('avatarImg').style.display = 'block';
+                document.getElementById('avatarPlaceholder').style.display = 'none';
+            }
         }
 
         async function logout() {
@@ -304,6 +333,36 @@
             const r = await fetch(url, options);
             if (r.status === 401) { window.location.href = '/login'; return null; }
             return r;
+        }
+
+        // ---------- 头像 ----------
+        async function uploadAvatar(input) {
+            const file = input.files[0];
+            if (!file) return;
+            if (!['image/png','image/jpeg','image/gif','image/webp'].includes(file.type)) {
+                showToast('不支持的文件格式', true);
+                input.value = '';
+                return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+                showToast('图片不能超过 5MB', true);
+                input.value = '';
+                return;
+            }
+            const formData = new FormData();
+            formData.append('avatar', file);
+            const r = await apiFetch('/api/avatar', { method: 'POST', body: formData });
+            if (!r) return;
+            const d = await r.json();
+            input.value = '';
+            if (d.success) {
+                document.getElementById('avatarImg').src = d.avatar;
+                document.getElementById('avatarImg').style.display = 'block';
+                document.getElementById('avatarPlaceholder').style.display = 'none';
+                showToast('✅ 头像已更新');
+            } else {
+                showToast('❌ ' + d.message, true);
+            }
         }
 
         // ---------- Toast ----------
@@ -475,7 +534,7 @@
         // ---------- 图表 ----------
         function switchTab(tab) {
             currentTab = tab;
-            const nameMap = { daily: '每日', weekly: '每周', monthly: '每月', yearly: '每年', records: '记录' };
+            const nameMap = { daily: '每日', weekly: '每周', monthly: '每月', yearly: '每年', records: '记录', plans: '计划' };
             document.querySelectorAll('.tab').forEach(el => {
                 el.classList.toggle('active', el.textContent.trim() === nameMap[tab]);
             });
@@ -485,6 +544,18 @@
         async function renderChart(tab) {
             const ctx = document.getElementById('hoursChart').getContext('2d');
             const summaryContainer = document.getElementById('summaryList');
+            const plansPanel = document.getElementById('plansPanel');
+
+            // 计划标签
+            if (tab === 'plans') {
+                document.getElementById('hoursChart').style.display = 'none';
+                summaryContainer.innerHTML = '';
+                plansPanel.style.display = 'block';
+                loadPlans();
+                return;
+            } else {
+                plansPanel.style.display = 'none';
+            }
 
             let endpoint, color;
             if (tab === 'daily') { endpoint = '/api/hours/daily'; color = '#1890ff'; }
@@ -617,12 +688,90 @@
             }
         }
 
+        // ---------- 工作计划 ----------
+        async function loadPlans() {
+            const r = await apiFetch('/api/plans');
+            if (!r) return;
+            const plans = await r.json();
+            const container = document.getElementById('plansList');
+            if (plans.length === 0) {
+                container.innerHTML = '<div class="no-data">暂无工作计划</div>';
+                return;
+            }
+            let html = '';
+            plans.forEach(p => {
+                const statusClass = p.completed ? 'hours-badge' : 'session-hours';
+                const statusText = p.completed ? '✅ 已完成' : '进行中';
+                const deadlineHtml = p.deadline ? `<span style="color:#999;font-size:12px;margin-left:8px;">截止 ${p.deadline}</span>` : '';
+                html += '<div class="session-item" style="' + (p.completed ? 'opacity:.6;' : '') + '">' +
+                    '<div style="flex:1;">' +
+                    '<span style="font-weight:500;">' + p.title + '</span>' +
+                    deadlineHtml +
+                    '</div>' +
+                    '<span class="' + statusClass + '" style="font-size:12px;padding:2px 10px;">' + statusText + '</span>' +
+                    '<button class="logout-btn" style="padding:2px 8px;font-size:12px;" onclick="togglePlan(' + p.id + ',' + (p.completed ? 'false' : 'true') + ')">' + (p.completed ? '撤销' : '完成') + '</button>' +
+                    '<button class="logout-btn" style="padding:2px 8px;font-size:12px;margin-left:4px;" onclick="deletePlan(' + p.id + ')">✕</button>' +
+                    '</div>';
+            });
+            container.innerHTML = html;
+        }
+
+        async function addPlan() {
+            const title = document.getElementById('planTitleInput').value.trim();
+            const deadline = document.getElementById('planDeadlineInput').value;
+            if (!title) { showToast('请输入计划名称', true); return; }
+            const r = await apiFetch('/api/plans', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, deadline: deadline || null }),
+            });
+            if (!r) return;
+            const d = await r.json();
+            if (d.success) {
+                document.getElementById('planTitleInput').value = '';
+                document.getElementById('planDeadlineInput').value = '';
+                showToast('✅ 计划已添加');
+                loadPlans();
+            } else {
+                showToast('❌ ' + d.message, true);
+            }
+        }
+
+        async function togglePlan(id, completed) {
+            const r = await apiFetch('/api/plans/' + id, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ completed }),
+            });
+            if (!r) return;
+            const d = await r.json();
+            if (d.success) {
+                showToast(completed ? '✅ 计划已完成' : '已撤销完成');
+                loadPlans();
+            } else {
+                showToast('❌ ' + d.message, true);
+            }
+        }
+
+        async function deletePlan(id) {
+            if (!confirm('确定要删除这个计划吗？')) return;
+            const r = await apiFetch('/api/plans/' + id, { method: 'DELETE' });
+            if (!r) return;
+            const d = await r.json();
+            if (d.success) {
+                showToast('✅ 计划已删除');
+                loadPlans();
+            } else {
+                showToast('❌ ' + d.message, true);
+            }
+        }
+
         // ---------- 初始化 ----------
         async function init() {
             await checkAuth();
 
             document.querySelectorAll('.tab').forEach((el, i) => {
-                const tabs = ['daily', 'weekly', 'monthly', 'yearly', 'records'];
+                const tabs = ['daily', 'weekly', 'monthly', 'yearly', 'records', 'plans'];
                 el.onclick = () => switchTab(tabs[i]);
                 el.style.cursor = 'pointer';
             });
@@ -650,6 +799,11 @@
 
             await refreshStatus();
             renderChart('daily');
+
+            // 计划名称回车添加
+            document.getElementById('planTitleInput').addEventListener('keydown', e => {
+                if (e.key === 'Enter') addPlan();
+            });
         }
 
         init();
