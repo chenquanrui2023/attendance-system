@@ -14,8 +14,7 @@
             min-height: 100vh;
         }
         .container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
-        h1 { font-size: 24px; margin-bottom: 24px; display: flex; align-items: center; gap: 10px; }
-
+        h1 { font-size: 24px; display: flex; align-items: center; gap: 10px; margin-bottom: 0; }
         .card {
             background: #fff;
             border-radius: 12px;
@@ -33,6 +32,7 @@
         .status-text { font-size: 16px; color: #666; }
         .status-text strong { color: #333; }
         .time-display { font-size: 13px; color: #999; }
+        .session-count { font-size: 13px; color: #999; margin-top: -8px; }
 
         .btn {
             border: none;
@@ -55,7 +55,6 @@
         .btn-default { background: #f5f5f5; color: #333; border: 1px solid #d9d9d9; }
         .btn-default:hover { background: #e8e8e8; }
         .btn-sm { padding: 6px 16px; font-size: 13px; min-width: auto; border-radius: 6px; }
-        .btn-xs { padding: 3px 10px; font-size: 12px; min-width: auto; border-radius: 4px; }
 
         .hours-badge {
             display: inline-block;
@@ -66,7 +65,6 @@
             color: #52c41a;
             font-size: 14px;
         }
-
         .action-row {
             display: flex;
             gap: 12px;
@@ -78,8 +76,7 @@
         /* Modal */
         .modal-overlay {
             display: none;
-            position: fixed;
-            inset: 0;
+            position: fixed; inset: 0;
             background: rgba(0,0,0,.45);
             z-index: 1000;
             justify-content: center;
@@ -131,72 +128,57 @@
             border-radius: 8px;
             font-size: 14px;
             font-weight: 500;
-            transition: all .2s;
             border: none;
             background: transparent;
             color: #666;
+            transition: all .2s;
         }
         .tab.active { background: #1890ff; color: #fff; }
         .tab:hover:not(.active) { background: #e6f7ff; }
 
         .chart-container { position: relative; height: 280px; }
 
-        /* Summary list */
+        /* Summary */
         .summary-list { margin-top: 16px; }
-        .summary-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 0;
+        .day-group { margin-bottom: 12px; }
+        .day-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 6px 0; font-size: 14px; font-weight: 600; color: #333;
             border-bottom: 1px solid #f0f0f0;
-            gap: 12px;
         }
-        .summary-item:last-child { border-bottom: none; }
-        .summary-date { font-size: 13px; color: #999; white-space: nowrap; min-width: 100px; }
-        .summary-times { font-size: 12px; color: #bbb; white-space: nowrap; }
-        .summary-text { flex: 1; font-size: 14px; color: #333; line-height: 1.5; }
-        .summary-hours { font-size: 13px; color: #52c41a; white-space: nowrap; min-width: 50px; text-align: right; }
-        .summary-actions { display: flex; gap: 4px; }
-        .delete-btn {
-            background: none; border: none; color: #ff4d4f; cursor: pointer;
-            font-size: 16px; padding: 2px 6px; border-radius: 4px; opacity: .5;
-            transition: opacity .2s;
+        .session-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 0 8px 16px; gap: 12px;
+            border-bottom: 1px solid #f5f5f5;
         }
-        .delete-btn:hover { opacity: 1; background: #fff1f0; }
+        .session-item:last-child { border-bottom: none; }
+        .session-times { font-size: 13px; color: #888; white-space: nowrap; min-width: 90px; }
+        .session-text { flex: 1; font-size: 13px; color: #555; line-height: 1.4; }
+        .session-hours { font-size: 13px; color: #52c41a; white-space: nowrap; min-width: 50px; text-align: right; }
 
         .no-data { text-align: center; color: #999; padding: 40px 0; font-size: 14px; }
 
         /* Header */
         .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 24px;
         }
-        .header h1 { font-size: 24px; display: flex; align-items: center; gap: 10px; margin-bottom: 0; }
         .user-info { display: flex; align-items: center; gap: 12px; font-size: 14px; color: #666; }
         .user-info .username { font-weight: 600; color: #333; }
         .logout-btn {
             background: none; border: 1px solid #d9d9d9; border-radius: 6px;
             padding: 4px 12px; font-size: 13px; cursor: pointer; color: #666;
-            transition: all .2s;
         }
         .logout-btn:hover { border-color: #ff4d4f; color: #ff4d4f; }
 
         /* Toast */
         .toast {
-            position: fixed;
-            top: 20px;
-            left: 50%;
+            position: fixed; top: 20px; left: 50%;
             transform: translateX(-50%);
-            background: #333;
-            color: #fff;
-            padding: 10px 24px;
-            border-radius: 8px;
-            font-size: 14px;
-            z-index: 2000;
-            opacity: 0;
-            transition: opacity .3s;
+            background: #333; color: #fff;
+            padding: 10px 24px; border-radius: 8px;
+            font-size: 14px; z-index: 2000;
+            opacity: 0; transition: opacity .3s;
             pointer-events: none;
         }
         .toast.show { opacity: 1; }
@@ -218,10 +200,11 @@
             <div class="clock-in-area">
                 <div class="status-text" id="statusText">加载中...</div>
                 <div class="time-display" id="timeDisplay"></div>
-                <button class="btn btn-primary" id="mainBtn" onclick="handleMainAction()">上班打卡</button>
+                <button class="btn btn-primary" id="mainBtn" onclick="handleMainAction()">开始工作</button>
                 <div id="todayHours" style="display:none;">
-                    <span class="hours-badge">今日已工作: <span id="todayHoursValue">0</span> 小时</span>
+                    <span class="hours-badge">今日累计: <span id="todayHoursValue">0</span> 小时</span>
                 </div>
+                <div class="session-count" id="sessionCount"></div>
                 <div class="action-row">
                     <button class="btn btn-default btn-sm" onclick="openBackfillModal()">📝 补录</button>
                 </div>
@@ -242,15 +225,15 @@
         </div>
     </div>
 
-    <!-- 下班打卡弹窗 -->
+    <!-- 下班弹窗 -->
     <div class="modal-overlay" id="summaryModal">
         <div class="modal">
-            <h2>下班打卡</h2>
-            <p>请填写今天的工作摘要：</p>
-            <textarea id="summaryInput" placeholder="今天完成了哪些工作？"></textarea>
+            <h2>结束工作</h2>
+            <p>请填写本次工作摘要：</p>
+            <textarea id="summaryInput" placeholder="完成了哪些工作？"></textarea>
             <div class="modal-actions">
-                <button class="btn btn-default" onclick="closeModal('summaryModal')">跳过</button>
-                <button class="btn btn-primary" onclick="submitCheckOut()">确认下班</button>
+                <button class="btn btn-default" onclick="submitCheckOut(true)">跳过</button>
+                <button class="btn btn-primary" onclick="submitCheckOut(false)">确认结束</button>
             </div>
         </div>
     </div>
@@ -259,21 +242,21 @@
     <div class="modal-overlay" id="backfillModal">
         <div class="modal">
             <h2>📝 补录打卡</h2>
-            <p>补填某一天的打卡记录</p>
+            <p>补填一次工作记录</p>
             <label>日期</label>
             <input type="date" id="backfillDate">
             <div class="form-row">
                 <div>
-                    <label>上班时间</label>
+                    <label>开始时间</label>
                     <input type="time" id="backfillIn" value="09:00">
                 </div>
                 <div>
-                    <label>下班时间 <span style="color:#999;font-weight:400;">(可选)</span></label>
+                    <label>结束时间 <span style="color:#999;font-weight:400;">(可选)</span></label>
                     <input type="time" id="backfillOut">
                 </div>
             </div>
-            <label>工作摘要 <span style="color:#999;font-weight:400;">(可选)</span></label>
-            <textarea id="backfillSummary" placeholder="当天完成了哪些工作？"></textarea>
+            <label>工作摘要</label>
+            <textarea id="backfillSummary" placeholder="完成了哪些工作？"></textarea>
             <div class="modal-actions">
                 <button class="btn btn-default" onclick="closeModal('backfillModal')">取消</button>
                 <button class="btn btn-primary" onclick="submitBackfill()">保存</button>
@@ -288,7 +271,7 @@
             <p id="deleteConfirmText">确定要删除这条记录吗？</p>
             <div class="modal-actions">
                 <button class="btn btn-default" onclick="closeModal('deleteModal')">取消</button>
-                <button class="btn btn-danger" id="deleteConfirmBtn" onclick="confirmDelete()">删除</button>
+                <button class="btn btn-danger" onclick="confirmDelete()">删除</button>
             </div>
         </div>
     </div>
@@ -299,7 +282,8 @@
     <script>
         let chart = null;
         let currentTab = 'daily';
-        let pendingDeleteDate = null;
+        let pendingDeleteId = null;
+        let statusTimer = null;
 
         // ---------- Auth ----------
         async function checkAuth() {
@@ -314,7 +298,6 @@
             window.location.href = '/login';
         }
 
-        // 包装 fetch 自动处理 401
         async function apiFetch(url, options = {}) {
             const r = await fetch(url, options);
             if (r.status === 401) { window.location.href = '/login'; return null; }
@@ -330,7 +313,6 @@
             setTimeout(() => el.classList.remove('show'), 2500);
         }
 
-        // ---------- Modal ----------
         function openModal(id) { document.getElementById(id).classList.add('active'); }
         function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 
@@ -343,58 +325,64 @@
             const timeDisplay = document.getElementById('timeDisplay');
             const mainBtn = document.getElementById('mainBtn');
             const todayHours = document.getElementById('todayHours');
+            const sessionCount = document.getElementById('sessionCount');
 
-            if (!data.checked_in) {
-                statusText.innerHTML = '今日尚未打卡';
-                timeDisplay.textContent = '';
-                mainBtn.textContent = '📌 上班打卡';
-                mainBtn.className = 'btn btn-primary';
-                mainBtn.disabled = false;
-                todayHours.style.display = 'none';
-            } else if (!data.checked_out) {
-                statusText.innerHTML = '已上班 <strong>' + data.check_in_time + '</strong>';
-                mainBtn.textContent = '🔓 下班打卡';
+            if (data.has_open_session) {
+                const s = data.open_session;
+                statusText.innerHTML = '工作中: 开始于 <strong>' + s.check_in + '</strong>';
+                mainBtn.textContent = '🔚 结束工作';
                 mainBtn.className = 'btn btn-danger';
                 mainBtn.disabled = false;
                 todayHours.style.display = 'block';
-                document.getElementById('todayHoursValue').textContent = data.current_hours;
-            } else {
-                statusText.innerHTML = '已完成打卡 (上班 <strong>' + data.check_in_time +
-                    '</strong> → 下班 <strong>' + data.check_out_time + '</strong>)';
-                mainBtn.textContent = '✅ 今日已完成';
-                mainBtn.className = 'btn btn-primary';
-                mainBtn.disabled = true;
+                document.getElementById('todayHoursValue').textContent = data.today_hours;
+                sessionCount.textContent = '今日第 ' + data.sessions_count + ' 次工作';
+                timeDisplay.textContent = '进行中 (' + s.current_hours + ' 小时)';
+            } else if (data.checked_in) {
+                statusText.innerHTML = '今日工作 ' + data.sessions_count + ' 次，共 <strong>' + data.today_hours + '</strong> 小时';
+                mainBtn.textContent = '📌 开始工作';
+                mainBtn.className = 'btn btn-success';
+                mainBtn.disabled = false;
                 todayHours.style.display = 'block';
-                document.getElementById('todayHoursValue').textContent = data.current_hours || '0';
+                document.getElementById('todayHoursValue').textContent = data.today_hours;
+                sessionCount.textContent = '所有工作已结束';
+                timeDisplay.textContent = '';
+            } else {
+                statusText.innerHTML = '今日尚未打卡';
+                timeDisplay.textContent = '';
+                mainBtn.textContent = '📌 开始工作';
+                mainBtn.className = 'btn btn-primary';
+                mainBtn.disabled = false;
+                todayHours.style.display = 'none';
+                sessionCount.textContent = '';
             }
-
-            timeDisplay.textContent = data.check_in_time
-                ? '打卡时间: ' + data.check_in_time + (data.check_out_time ? ' → ' + data.check_out_time : ' (进行中)')
-                : '';
         }
 
         async function handleMainAction() {
             const btn = document.getElementById('mainBtn');
             if (btn.disabled) return;
 
-            const res = await fetch('/api/status');
+            // 先查状态
+            const res = await apiFetch('/api/status');
+            if (!res) return;
             const data = await res.json();
 
-            if (!data.checked_in) {
+            if (data.has_open_session) {
+                // 有进行中的工作 → 点击结束
+                openModal('summaryModal');
+                document.getElementById('summaryInput').value = '';
+                setTimeout(() => document.getElementById('summaryInput').focus(), 100);
+            } else {
+                // 没进行中的工作 → 开始
                 const r = await apiFetch('/api/check_in', { method: 'POST' });
                 if (!r) return;
                 const d = await r.json();
                 if (d.success) {
-                    showToast('✅ 上班打卡成功！' + d.time);
+                    showToast('✅ 开始工作！' + d.time);
                     refreshStatus();
                     renderChart(currentTab);
                 } else {
                     showToast('❌ ' + d.message, true);
                 }
-            } else if (!data.checked_out) {
-                openModal('summaryModal');
-                document.getElementById('summaryInput').value = '';
-                setTimeout(() => document.getElementById('summaryInput').focus(), 100);
             }
         }
 
@@ -409,7 +397,7 @@
             if (!r) return;
             const d = await r.json();
             if (d.success) {
-                showToast('✅ 下班打卡成功！今日工作 ' + d.hours + ' 小时');
+                showToast('✅ 结束工作！本次 ' + d.hours + ' 小时');
                 refreshStatus();
                 renderChart(currentTab);
             } else {
@@ -419,11 +407,10 @@
 
         // ---------- 补录 ----------
         function openBackfillModal() {
-            document.getElementById('backfillDate').value = new Date().toISOString().split('T')[0];
-            if (!document.getElementById('backfillOut').value) {
-                // 默认下班时间 = 上班 + 8h
-                document.getElementById('backfillOut').value = '18:00';
-            }
+            const now = new Date();
+            const beijing = new Date(now.getTime() + 8 * 3600000);
+            document.getElementById('backfillDate').value = beijing.toISOString().split('T')[0];
+            document.getElementById('backfillOut').value = '';
             openModal('backfillModal');
         }
 
@@ -434,7 +421,7 @@
             const summary = document.getElementById('backfillSummary').value.trim();
 
             if (!date || !check_in) {
-                showToast('请填写日期和上班时间', true);
+                showToast('请填写日期和开始时间', true);
                 return;
             }
 
@@ -448,8 +435,8 @@
             closeModal('backfillModal');
 
             if (d.success) {
-                const hours = d.hours ? ` (${d.hours} 小时)` : '';
-                showToast(`✅ ${date} 补录成功${hours}`);
+                const h = d.hours ? ` (${d.hours} 小时)` : '';
+                showToast(`✅ ${date} 补录成功${h}`);
                 refreshStatus();
                 renderChart(currentTab);
             } else {
@@ -458,21 +445,21 @@
         }
 
         // ---------- 删除 ----------
-        function requestDelete(date, label) {
-            pendingDeleteDate = date;
+        function requestDelete(id, label) {
+            pendingDeleteId = id;
             document.getElementById('deleteConfirmText').textContent =
-                `确定要删除 ${label} 的打卡记录吗？`;
+                `确定要删除这条记录吗？`;
             openModal('deleteModal');
         }
 
         async function confirmDelete() {
-            if (!pendingDeleteDate) return;
+            if (!pendingDeleteId) return;
             closeModal('deleteModal');
 
-            const r = await apiFetch(`/api/records/${pendingDeleteDate}`, { method: 'DELETE' });
+            const r = await apiFetch(`/api/records/${pendingDeleteId}`, { method: 'DELETE' });
             if (!r) return;
             const d = await r.json();
-            pendingDeleteDate = null;
+            pendingDeleteId = null;
 
             if (d.success) {
                 showToast('✅ 记录已删除');
@@ -508,13 +495,16 @@
 
             if (chart) chart.destroy();
 
+            const chartData = data.map(d => d.total_hours !== undefined ? d.total_hours : d.hours);
+            const chartLabels = data.map(d => d.label || d.range);
+
             chart = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: data.map(d => d.label || d.range),
+                    labels: chartLabels,
                     datasets: [{
                         label: '小时',
-                        data: data.map(d => d.hours),
+                        data: chartData,
                         backgroundColor: color + 'cc',
                         borderColor: color,
                         borderWidth: 1,
@@ -543,35 +533,39 @@
 
             // 摘要信息
             if (tab === 'daily') {
-                const items = data.filter(d => d.check_in);
+                const items = data.filter(d => d.sessions && d.sessions.length > 0);
                 if (items.length === 0) {
                     summaryContainer.innerHTML = '<div class="no-data">本周暂无打卡记录</div>';
                 } else {
                     let html = '';
                     items.forEach(d => {
-                        const hours = d.hours ? d.hours.toFixed(2) : '0';
-                        const times = d.check_out
-                            ? d.check_in + ' - ' + d.check_out
-                            : (d.check_in ? d.check_in + ' (进行中)' : '');
-                        html += `<div class="summary-item">
-                            <div class="summary-date">${d.label || d.date}</div>
-                            <div class="summary-times">${times}</div>
-                            <div class="summary-text">${d.summary || '—'}</div>
-                            <div class="summary-hours">${hours}h</div>
-                            <div class="summary-actions">
-                                <button class="delete-btn" onclick="requestDelete('${d.date}','${d.label || d.date}')" title="删除">✕</button>
-                            </div>
-                        </div>`;
+                        html += '<div class="day-group">';
+                        html += '<div class="day-header">' +
+                            '<span>' + d.label + '</span>' +
+                            '<span style="color:#52c41a;">共 ' + d.total_hours.toFixed(2) + 'h</span>' +
+                            '</div>';
+                        d.sessions.forEach(s => {
+                            const times = s.check_out
+                                ? s.check_in + ' - ' + s.check_out
+                                : s.check_in + ' (进行中)';
+                            html += '<div class="session-item">' +
+                                '<div class="session-times">' + times + '</div>' +
+                                '<div class="session-text">' + (s.summary || '—') + '</div>' +
+                                '<div class="session-hours">' + s.hours.toFixed(2) + 'h</div>' +
+                                '<button class="logout-btn" style="padding:2px 6px;font-size:12px;" onclick="requestDelete(' + s.id + ')">✕</button>' +
+                                '</div>';
+                        });
+                        html += '</div>';
                     });
                     summaryContainer.innerHTML = html;
                 }
             } else {
-                const totalHours = data.reduce((s, d) => s + d.hours, 0);
+                const totalHours = data.reduce((s, d) => s + (d.hours || d.total_hours || 0), 0);
                 const daysWorked = data.reduce((s, d) => s + (d.days || 0), 0);
-                const nonZero = data.filter(d => d.hours > 0).length;
+                const nonZero = data.filter(d => (d.hours || d.total_hours || 0) > 0).length;
                 let info = `<div class="no-data">总计 ${totalHours.toFixed(2)} 小时`;
                 if (daysWorked) info += `，出勤 ${daysWorked} 天`;
-                if (nonZero) info += `，平均 ${(totalHours / nonZero).toFixed(2)} 小时/${tab === 'weekly' ? '周' : '月'}`;
+                if (nonZero) info += `，人均 ${(totalHours / nonZero).toFixed(2)} 小时/${tab === 'weekly' ? '周' : '月'}`;
                 info += '</div>';
                 summaryContainer.innerHTML = info;
             }
@@ -580,30 +574,33 @@
         // ---------- 初始化 ----------
         async function init() {
             await checkAuth();
+
             document.querySelectorAll('.tab').forEach((el, i) => {
                 const tabs = ['daily', 'weekly', 'monthly'];
                 el.onclick = () => switchTab(tabs[i]);
                 el.style.cursor = 'pointer';
             });
-            // 如果已上班，定时刷新今日工时
-            const r = await apiFetch('/api/status');
-            if (!r) return;
-            const data = await r.json();
-            if (data.checked_in && !data.checked_out) {
-                setInterval(async () => {
-                    const r2 = await apiFetch('/api/status');
-                    if (!r2) return;
-                    const d2 = await r2.json();
-                    document.getElementById('todayHoursValue').textContent = d2.current_hours;
-                }, 30000);
-            }
 
-            // 点击弹窗遮罩关闭
+            // 遮罩关闭
             document.querySelectorAll('.modal-overlay').forEach(el => {
                 el.addEventListener('click', e => {
                     if (e.target === el) el.classList.remove('active');
                 });
             });
+
+            // 定时刷新
+            statusTimer = setInterval(async () => {
+                const r = await apiFetch('/api/status');
+                if (!r) return;
+                const d = await r.json();
+                if (d.has_open_session || d.checked_in) {
+                    document.getElementById('todayHoursValue').textContent = d.today_hours;
+                }
+                if (d.has_open_session) {
+                    document.getElementById('timeDisplay').textContent =
+                        '进行中 (' + d.open_session.current_hours + ' 小时)';
+                }
+            }, 30000);
 
             await refreshStatus();
             renderChart('daily');

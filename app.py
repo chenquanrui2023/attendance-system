@@ -1,9 +1,9 @@
-"""打卡系统 - 在线多用户版"""
+"""打卡系统 - 在线多用户版 (北京时间 / 多次打卡)"""
 import socket
 socket.getfqdn = lambda *args: '127.0.0.1'
 
 import os
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 import calendar
 from functools import wraps
 
@@ -13,10 +13,23 @@ from flask import (
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = os.environ.get(
-    'SECRET_KEY',
-    'dev-secret-change-in-production-123456'
-)
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-in-production')
+
+# ---------- 北京时间 ----------
+BJ_TZ = timezone(timedelta(hours=8))
+
+
+def bj_now():
+    return datetime.now(BJ_TZ)
+
+
+def bj_today():
+    return bj_now().date()
+
+
+def bj_time_str():
+    return bj_now().strftime('%H:%M:%S')
+
 
 # ---------- 数据库 ----------
 IS_POSTGRES = 'DATABASE_URL' in os.environ
@@ -40,7 +53,9 @@ def init_db():
     conn = get_db()
     cur = conn.cursor()
 
+    # 兼容旧表：删掉重建（新项目没影响）
     if IS_POSTGRES:
+        cur.execute("DROP TABLE IF EXISTS attendance_records")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -56,11 +71,11 @@ def init_db():
                 date DATE NOT NULL,
                 check_in TIME NOT NULL,
                 check_out TIME,
-                summary TEXT,
-                UNIQUE(user_id, date)
+                summary TEXT
             )
         """)
     else:
+        cur.execute("DROP TABLE IF EXISTS attendance_records")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,8 +91,7 @@ def init_db():
                 date TEXT NOT NULL,
                 check_in TEXT NOT NULL,
                 check_out TEXT,
-                summary TEXT,
-                UNIQUE(user_id, date)
+                summary TEXT
             )
         """)
 
@@ -98,10 +112,6 @@ def login_required(f):
     return decorated
 
 
-def get_cur_time_str():
-    return datetime.now().strftime('%H:%M:%S' if not IS_POSTGRES else '%H:%M:%S')
-
-
 def calc_hours(check_in, check_out):
     if not check_in or not check_out:
         return 0
@@ -109,6 +119,24 @@ def calc_hours(check_in, check_out):
     t1 = datetime.strptime(str(check_in)[:8], fmt)
     t2 = datetime.strptime(str(check_out)[:8], fmt)
     return round((t2 - t1).total_seconds() / 3600, 2)
+
+
+def query(user_id, start_date, end_date):
+    """查询日期范围内的打卡记录"""
+    conn = get_db()
+    cur = conn.cursor()
+    if IS_POSTGRES:
+        rows = cur.execute(
+            'SELECT * FROM attendance_records WHERE user_id = %s AND date >= %s AND date <= %s ORDER BY date, id',
+            (user_id, start_date, end_date)
+        ).fetchall()
+    else:
+        rows = cur.execute(
+            'SELECT * FROM attendance_records WHERE user_id = ? AND date >= ? AND date <= ? ORDER BY date, id',
+            (user_id, start_date, end_date)
+        ).fetchall()
+    conn.close()
+    return rows
 
 
 # ---------- 认证 ----------
@@ -152,15 +180,21 @@ def register():
         (username, pwhash)
     )
     conn.commit()
-    user_id = cur.lastrowid if not IS_POSTGRES else cur.fetchone()
-    if IS_POSTGRES:
-        cur.execute('SELECT id FROM users WHERE username = %s', (username,))
-        user_id = cur.fetchone()[0]
     conn.close()
 
-    session['user_id'] = user_id
+    session['user_id'] = cur.lastrowid if not IS_POSTGRES else _get_user_id(username)
     session['username'] = username
     return jsonify({'success': True, 'username': username})
+
+
+def _get_user_id(username):
+    conn = get_db()
+    cur = conn.cursor()
+    u = cur.execute(
+        'SELECT id FROM users WHERE username = %s', (username,)
+    ).fetchone()
+    conn.close()
+    return u['id'] if u else None
 
 
 @app.route('/api/login', methods=['POST'])
@@ -214,117 +248,115 @@ def index():
     return render_template('index.html')
 
 
-# ---------- 打卡 ----------
+# ---------- 状态 ----------
 @app.route('/api/status')
 @login_required
 def get_status():
     user_id = session['user_id']
-    today_str = date.today().isoformat()
-    conn = get_db()
+    today_str = bj_today().isoformat()
+    now = bj_time_str()
 
-    if IS_POSTGRES:
-        record = conn.cursor().execute(
-            'SELECT * FROM attendance_records WHERE user_id = %s AND date = %s',
-            (user_id, today_str)
-        ).fetchone()
-    else:
-        record = conn.cursor().execute(
-            'SELECT * FROM attendance_records WHERE user_id = ? AND date = ?',
-            (user_id, today_str)
-        ).fetchone()
-    conn.close()
+    sessions = query(user_id, today_str, today_str)
+    open_session = None
+    total_hours = 0
 
-    if record is None:
-        return jsonify({'checked_in': False})
+    for s in sessions:
+        if s['check_out'] is None:
+            open_session = {
+                'id': s['id'],
+                'check_in': str(s['check_in'])[:5],
+                'current_hours': calc_hours(str(s['check_in'])[:8], now),
+            }
+        else:
+            total_hours += calc_hours(str(s['check_in'])[:8], str(s['check_out'])[:8])
 
-    now = get_cur_time_str()
-    current_hours = 0
-    if record['check_out'] is None:
-        current_hours = calc_hours(str(record['check_in'])[:8], now)
+    # 加上当前进行中的时长
+    if open_session:
+        total_hours += open_session['current_hours']
 
     return jsonify({
-        'checked_in': True,
-        'checked_out': record['check_out'] is not None,
-        'check_in_time': str(record['check_in'])[:5],
-        'check_out_time': str(record['check_out'])[:5] if record['check_out'] else None,
-        'summary': record['summary'],
-        'current_hours': current_hours,
+        'checked_in': len(sessions) > 0,
+        'has_open_session': open_session is not None,
+        'open_session': open_session,
+        'sessions_count': len(sessions),
+        'today_hours': round(total_hours, 2),
     })
 
 
+# ---------- 上班 ----------
 @app.route('/api/check_in', methods=['POST'])
 @login_required
 def check_in():
     user_id = session['user_id']
-    today_str = date.today().isoformat()
-    now = get_cur_time_str()
+    today_str = bj_today().isoformat()
+    now = bj_time_str()
+
+    # 检查是否有未下班的 session
+    sessions = query(user_id, today_str, today_str)
+    for s in sessions:
+        if s['check_out'] is None:
+            return jsonify({'success': False, 'message': '还有未结束的工作，请先下班打卡'})
 
     conn = get_db()
     cur = conn.cursor()
-    try:
-        if IS_POSTGRES:
-            cur.execute(
-                'INSERT INTO attendance_records (user_id, date, check_in) VALUES (%s, %s, %s)',
-                (user_id, today_str, now)
-            )
-        else:
-            cur.execute(
-                'INSERT INTO attendance_records (user_id, date, check_in) VALUES (?, ?, ?)',
-                (user_id, today_str, now)
-            )
-        conn.commit()
-        return jsonify({'success': True, 'time': now})
-    except Exception:
-        return jsonify({'success': False, 'message': '今天已经打过卡了'})
-    finally:
-        conn.close()
+    if IS_POSTGRES:
+        cur.execute(
+            'INSERT INTO attendance_records (user_id, date, check_in) VALUES (%s, %s, %s)',
+            (user_id, today_str, now)
+        )
+    else:
+        cur.execute(
+            'INSERT INTO attendance_records (user_id, date, check_in) VALUES (?, ?, ?)',
+            (user_id, today_str, now)
+        )
+    conn.commit()
+    session_id = cur.lastrowid if not IS_POSTGRES else _get_last_id(cur)
+    conn.close()
+    return jsonify({'success': True, 'time': now, 'session_id': session_id})
 
 
+def _get_last_id(cur):
+    cur.execute('SELECT LASTVAL()')
+    return cur.fetchone()[0]
+
+
+# ---------- 下班 ----------
 @app.route('/api/check_out', methods=['POST'])
 @login_required
 def check_out():
     user_id = session['user_id']
-    today_str = date.today().isoformat()
-    now = get_cur_time_str()
+    today_str = bj_today().isoformat()
+    now = bj_time_str()
     data = request.get_json()
     summary = (data or {}).get('summary', '')
 
+    # 找最新未下班的 session
+    sessions = query(user_id, today_str, today_str)
+    open_record = None
+    for s in sessions:
+        if s['check_out'] is None:
+            open_record = s
+
+    if open_record is None:
+        return jsonify({'success': False, 'message': '没有需要下班打卡的工作'})
+
     conn = get_db()
     cur = conn.cursor()
-
-    if IS_POSTGRES:
-        record = cur.execute(
-            'SELECT * FROM attendance_records WHERE user_id = %s AND date = %s',
-            (user_id, today_str)
-        ).fetchone()
-    else:
-        record = cur.execute(
-            'SELECT * FROM attendance_records WHERE user_id = ? AND date = ?',
-            (user_id, today_str)
-        ).fetchone()
-
-    if record is None:
-        conn.close()
-        return jsonify({'success': False, 'message': '今天还没有上班打卡'})
-    if record['check_out'] is not None:
-        conn.close()
-        return jsonify({'success': False, 'message': '今天已经打过下班卡了'})
-
     if IS_POSTGRES:
         cur.execute(
-            'UPDATE attendance_records SET check_out = %s, summary = %s WHERE user_id = %s AND date = %s',
-            (now, summary, user_id, today_str)
+            'UPDATE attendance_records SET check_out = %s, summary = %s WHERE id = %s',
+            (now, summary, open_record['id'])
         )
     else:
         cur.execute(
-            'UPDATE attendance_records SET check_out = ?, summary = ? WHERE user_id = ? AND date = ?',
-            (now, summary, user_id, today_str)
+            'UPDATE attendance_records SET check_out = ?, summary = ? WHERE id = ?',
+            (now, summary, open_record['id'])
         )
     conn.commit()
 
-    hours = calc_hours(str(record['check_in'])[:8], now)
+    hours = calc_hours(str(open_record['check_in'])[:8], now)
     conn.close()
-    return jsonify({'success': True, 'time': now, 'hours': hours})
+    return jsonify({'success': True, 'time': now, 'hours': hours, 'session_id': open_record['id']})
 
 
 # ---------- 补录 ----------
@@ -357,22 +389,12 @@ def backfill():
 
     conn = get_db()
     cur = conn.cursor()
-
-    # 删除旧记录（如果存在）
     if IS_POSTGRES:
-        cur.execute(
-            'DELETE FROM attendance_records WHERE user_id = %s AND date = %s',
-            (user_id, record_date)
-        )
         cur.execute(
             'INSERT INTO attendance_records (user_id, date, check_in, check_out, summary) VALUES (%s, %s, %s, %s, %s)',
             (user_id, record_date, check_in_full, check_out_full, summary)
         )
     else:
-        cur.execute(
-            'DELETE FROM attendance_records WHERE user_id = ? AND date = ?',
-            (user_id, record_date)
-        )
         cur.execute(
             'INSERT INTO attendance_records (user_id, date, check_in, check_out, summary) VALUES (?, ?, ?, ?, ?)',
             (user_id, record_date, check_in_full, check_out_full, summary)
@@ -381,26 +403,26 @@ def backfill():
 
     hours = calc_hours(check_in_full, check_out_full) if check_out_full else 0
     conn.close()
-    return jsonify({'success': True, 'date': record_date, 'hours': hours})
+    return jsonify({'success': True, 'date': record_date, 'hours': hours, 'session_id': cur.lastrowid})
 
 
 # ---------- 删除记录 ----------
-@app.route('/api/records/<date_str>', methods=['DELETE'])
+@app.route('/api/records/<int:record_id>', methods=['DELETE'])
 @login_required
-def delete_record(date_str):
+def delete_record(record_id):
     user_id = session['user_id']
     conn = get_db()
     cur = conn.cursor()
 
     if IS_POSTGRES:
         cur.execute(
-            'DELETE FROM attendance_records WHERE user_id = %s AND date = %s',
-            (user_id, date_str)
+            'DELETE FROM attendance_records WHERE id = %s AND user_id = %s',
+            (record_id, user_id)
         )
     else:
         cur.execute(
-            'DELETE FROM attendance_records WHERE user_id = ? AND date = ?',
-            (user_id, date_str)
+            'DELETE FROM attendance_records WHERE id = ? AND user_id = ?',
+            (record_id, user_id)
         )
     deleted = cur.rowcount > 0
     conn.commit()
@@ -408,60 +430,48 @@ def delete_record(date_str):
 
     if deleted:
         return jsonify({'success': True})
-    return jsonify({'success': False, 'message': '未找到该日期的记录'})
+    return jsonify({'success': False, 'message': '未找到该记录'})
 
 
 # ---------- 数据接口 ----------
-def _query_records(user_id, start_date, end_date):
-    """查询指定日期范围内的打卡记录"""
-    conn = get_db()
-    cur = conn.cursor()
-    if IS_POSTGRES:
-        rows = cur.execute(
-            'SELECT * FROM attendance_records WHERE user_id = %s AND date >= %s AND date <= %s ORDER BY date',
-            (user_id, start_date, end_date)
-        ).fetchall()
-    else:
-        rows = cur.execute(
-            'SELECT * FROM attendance_records WHERE user_id = ? AND date >= ? AND date <= ? ORDER BY date',
-            (user_id, start_date, end_date)
-        ).fetchall()
-    conn.close()
-    return rows
-
-
 @app.route('/api/hours/daily')
 @login_required
 def daily_hours():
     user_id = session['user_id']
-    today = date.today()
+    today = bj_today()
     monday = today - timedelta(days=today.weekday())
     sunday = monday + timedelta(days=6)
     weekday_names = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
 
-    records = _query_records(user_id, monday.isoformat(), sunday.isoformat())
-    now_str = get_cur_time_str()
+    records = query(user_id, monday.isoformat(), sunday.isoformat())
+    now_str = bj_time_str()
 
     days = []
     for i in range(7):
         d = monday + timedelta(days=i)
-        day_data = {
-            'date': d.isoformat(),
-            'label': f'{d.month}/{d.day} {weekday_names[i]}',
-            'hours': 0, 'check_in': None, 'check_out': None, 'summary': None
-        }
+        sessions = []
+        day_total = 0
+
         for r in records:
             r_date = str(r['date'])[:10] if IS_POSTGRES else r['date']
             if r_date == d.isoformat():
                 end = str(r['check_out'])[:8] if r['check_out'] else (now_str if d == today else None)
-                hours = calc_hours(str(r['check_in'])[:8], end) if end else 0
-                day_data.update({
-                    'hours': hours,
+                h = calc_hours(str(r['check_in'])[:8], end) if end else 0
+                sessions.append({
+                    'id': r['id'],
                     'check_in': str(r['check_in'])[:5],
                     'check_out': str(r['check_out'])[:5] if r['check_out'] else None,
+                    'hours': h,
                     'summary': r['summary'],
                 })
-        days.append(day_data)
+                day_total += h
+
+        days.append({
+            'date': d.isoformat(),
+            'label': f'{d.month}/{d.day} {weekday_names[i]}',
+            'total_hours': round(day_total, 2),
+            'sessions': sessions,
+        })
     return jsonify(days)
 
 
@@ -469,11 +479,11 @@ def daily_hours():
 @login_required
 def weekly_hours():
     user_id = session['user_id']
-    today = date.today()
+    today = bj_today()
     first_day = today.replace(day=1)
     last_day = today.replace(day=calendar.monthrange(today.year, today.month)[1])
 
-    records = _query_records(user_id, first_day.isoformat(), last_day.isoformat())
+    records = query(user_id, first_day.isoformat(), last_day.isoformat())
 
     weeks = []
     current = first_day - timedelta(days=first_day.weekday())
@@ -500,43 +510,45 @@ def weekly_hours():
 @login_required
 def monthly_hours():
     user_id = session['user_id']
-    today = date.today()
-    year_str = str(today.year)
+    year_str = str(bj_today().year)
 
-    conn = get_db()
-    cur = conn.cursor()
     if IS_POSTGRES:
-        rows = cur.execute(
-            "SELECT * FROM attendance_records WHERE user_id = %s AND date >= %s AND date <= %s ORDER BY date",
-            (user_id, f'{year_str}-01-01', f'{year_str}-12-31')
-        ).fetchall()
+        records = query(user_id, f'{year_str}-01-01', f'{year_str}-12-31')
     else:
-        rows = cur.execute(
-            "SELECT * FROM attendance_records WHERE user_id = ? AND date LIKE ? ORDER BY date",
-            (user_id, f'{year_str}-%')
-        ).fetchall()
-    conn.close()
+        rows = _query_like(user_id, f'{year_str}-%')
+        records = rows
 
     months = []
     for m in range(1, 13):
         prefix = f'{year_str}-{m:02d}'
         month_hours = 0
-        days_worked = 0
-        for r in rows:
+        days_set = set()
+        for r in records:
             r_date_str = str(r['date'])[:10] if IS_POSTGRES else r['date']
             if r_date_str.startswith(prefix) and r['check_out']:
                 month_hours += calc_hours(str(r['check_in'])[:8], str(r['check_out'])[:8])
-                days_worked += 1
+                days_set.add(r_date_str)
         months.append({
             'label': f'{m}月',
             'hours': round(month_hours, 2),
-            'days': days_worked,
+            'days': len(days_set),
         })
     return jsonify(months)
 
 
+def _query_like(user_id, pattern):
+    conn = get_db()
+    cur = conn.cursor()
+    rows = cur.execute(
+        "SELECT * FROM attendance_records WHERE user_id = ? AND date LIKE ? ORDER BY date",
+        (user_id, pattern)
+    ).fetchall()
+    conn.close()
+    return rows
+
+
 if __name__ == '__main__':
     mode = 'PRODUCTION' if IS_POSTGRES else 'DEV (SQLite)'
-    print(f'=== 打卡系统 [{mode}] ===')
+    print(f'=== 打卡系统 [{mode}] (北京时间) ===')
     print(f'    http://127.0.0.1:5000')
     app.run(host='127.0.0.1', debug=not IS_POSTGRES, port=5000)
