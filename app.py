@@ -547,6 +547,81 @@ def _query_like(user_id, pattern):
     return rows
 
 
+# ---------- 全部记录 ----------
+@app.route('/api/records/all')
+@login_required
+def all_records():
+    user_id = session['user_id']
+    conn = get_db()
+    cur = conn.cursor()
+    if IS_POSTGRES:
+        rows = cur.execute(
+            'SELECT * FROM attendance_records WHERE user_id = %s ORDER BY date DESC, id DESC',
+            (user_id,)
+        ).fetchall()
+    else:
+        rows = cur.execute(
+            'SELECT * FROM attendance_records WHERE user_id = ? ORDER BY date DESC, id DESC',
+            (user_id,)
+        ).fetchall()
+    conn.close()
+
+    from collections import OrderedDict
+    days = OrderedDict()
+    for r in rows:
+        r_date = str(r['date'])[:10] if IS_POSTGRES else r['date']
+        if r_date not in days:
+            days[r_date] = {'date': r_date, 'total_hours': 0, 'sessions': []}
+        h = calc_hours(str(r['check_in'])[:8], str(r['check_out'])[:8]) if r['check_out'] else 0
+        days[r_date]['sessions'].append({
+            'id': r['id'],
+            'check_in': str(r['check_in'])[:5],
+            'check_out': str(r['check_out'])[:5] if r['check_out'] else None,
+            'hours': h,
+            'summary': r['summary'],
+        })
+        days[r_date]['total_hours'] = round(days[r_date]['total_hours'] + h, 2)
+    return jsonify(list(days.values()))
+
+
+# ---------- 每年 ----------
+@app.route('/api/hours/yearly')
+@login_required
+def yearly_hours():
+    user_id = session['user_id']
+
+    if IS_POSTGRES:
+        records = query(user_id, '2000-01-01', '2100-12-31')
+    else:
+        conn = get_db()
+        cur = conn.cursor()
+        rows = cur.execute(
+            'SELECT * FROM attendance_records WHERE user_id = ? ORDER BY date',
+            (user_id,)
+        ).fetchall()
+        conn.close()
+        records = rows
+
+    years = {}
+    for r in records:
+        r_date_str = str(r['date'])[:10] if IS_POSTGRES else r['date']
+        year = r_date_str[:4]
+        if year not in years:
+            years[year] = {'label': f'{year}年', 'hours': 0, 'days': set()}
+        if r['check_out']:
+            years[year]['hours'] += calc_hours(str(r['check_in'])[:8], str(r['check_out'])[:8])
+            years[year]['days'].add(r_date_str)
+
+    result = []
+    for y in sorted(years.keys()):
+        result.append({
+            'label': years[y]['label'],
+            'hours': round(years[y]['hours'], 2),
+            'days': len(years[y]['days']),
+        })
+    return jsonify(result)
+
+
 if __name__ == '__main__':
     mode = 'PRODUCTION' if IS_POSTGRES else 'DEV (SQLite)'
     print(f'=== 打卡系统 [{mode}] (北京时间) ===')

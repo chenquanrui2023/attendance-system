@@ -217,6 +217,8 @@
                 <button class="tab active">每日</button>
                 <button class="tab">每周</button>
                 <button class="tab">每月</button>
+                <button class="tab">每年</button>
+                <button class="tab">记录</button>
             </div>
             <div class="chart-container">
                 <canvas id="hoursChart"></canvas>
@@ -473,9 +475,9 @@
         // ---------- 图表 ----------
         function switchTab(tab) {
             currentTab = tab;
+            const nameMap = { daily: '每日', weekly: '每周', monthly: '每月', yearly: '每年', records: '记录' };
             document.querySelectorAll('.tab').forEach(el => {
-                el.classList.toggle('active', el.textContent.trim() ===
-                    ({ daily: '每日', weekly: '每周', monthly: '每月' }[tab]));
+                el.classList.toggle('active', el.textContent.trim() === nameMap[tab]);
             });
             renderChart(tab);
         }
@@ -487,7 +489,9 @@
             let endpoint, color;
             if (tab === 'daily') { endpoint = '/api/hours/daily'; color = '#1890ff'; }
             else if (tab === 'weekly') { endpoint = '/api/hours/weekly'; color = '#52c41a'; }
-            else { endpoint = '/api/hours/monthly'; color = '#722ed1'; }
+            else if (tab === 'monthly') { endpoint = '/api/hours/monthly'; color = '#722ed1'; }
+            else if (tab === 'yearly') { endpoint = '/api/hours/yearly'; color = '#eb2f96'; }
+            else { endpoint = '/api/records/all'; color = '#fa8c16'; }
 
             const res = await apiFetch(endpoint);
             if (!res) return;
@@ -531,7 +535,48 @@
                 }
             });
 
+            // 隐藏 chart（记录标签不需要图表）
+            const chartContainer = document.getElementById('hoursChart');
+            if (tab === 'records') {
+                chartContainer.style.display = 'none';
+            } else {
+                chartContainer.style.display = 'block';
+            }
+
             // 摘要信息
+            if (tab === 'records') {
+                // 记录列表
+                if (data.length === 0) {
+                    summaryContainer.innerHTML = '<div class="no-data">暂无打卡记录</div>';
+                } else {
+                    let html = '';
+                    const weekdayMap = ['周日','周一','周二','周三','周四','周五','周六'];
+                    data.forEach(d => {
+                        const dObj = new Date(d.date + 'T00:00:00+08:00');
+                        const label = d.date + ' ' + weekdayMap[dObj.getDay()];
+                        html += '<div class="day-group">';
+                        html += '<div class="day-header">' +
+                            '<span>' + label + '</span>' +
+                            '<span style="color:#52c41a;">共 ' + d.total_hours.toFixed(2) + 'h</span>' +
+                            '</div>';
+                        d.sessions.forEach(s => {
+                            const times = s.check_out
+                                ? s.check_in + ' - ' + s.check_out
+                                : s.check_in + ' (未结束)';
+                            html += '<div class="session-item">' +
+                                '<div class="session-times">' + times + '</div>' +
+                                '<div class="session-text">' + (s.summary || '—') + '</div>' +
+                                '<div class="session-hours">' + s.hours.toFixed(2) + 'h</div>' +
+                                '<button class="logout-btn" style="padding:2px 6px;font-size:12px;" onclick="requestDelete(' + s.id + ')">✕</button>' +
+                                '</div>';
+                        });
+                        html += '</div>';
+                    });
+                    summaryContainer.innerHTML = html;
+                }
+                return;
+            }
+
             if (tab === 'daily') {
                 const items = data.filter(d => d.sessions && d.sessions.length > 0);
                 if (items.length === 0) {
@@ -565,7 +610,8 @@
                 const nonZero = data.filter(d => (d.hours || d.total_hours || 0) > 0).length;
                 let info = `<div class="no-data">总计 ${totalHours.toFixed(2)} 小时`;
                 if (daysWorked) info += `，出勤 ${daysWorked} 天`;
-                if (nonZero) info += `，人均 ${(totalHours / nonZero).toFixed(2)} 小时/${tab === 'weekly' ? '周' : '月'}`;
+                const periodName = { weekly: '周', monthly: '月', yearly: '年' }[tab] || '期';
+                if (nonZero) info += `，平均 ${(totalHours / nonZero).toFixed(2)} 小时/${periodName}`;
                 info += '</div>';
                 summaryContainer.innerHTML = info;
             }
@@ -576,7 +622,7 @@
             await checkAuth();
 
             document.querySelectorAll('.tab').forEach((el, i) => {
-                const tabs = ['daily', 'weekly', 'monthly'];
+                const tabs = ['daily', 'weekly', 'monthly', 'yearly', 'records'];
                 el.onclick = () => switchTab(tabs[i]);
                 el.style.cursor = 'pointer';
             });
