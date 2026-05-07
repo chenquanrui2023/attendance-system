@@ -166,7 +166,10 @@ def calc_hours(check_in, check_out):
     fmt = '%H:%M:%S'
     t1 = datetime.strptime(str(check_in)[:8], fmt)
     t2 = datetime.strptime(str(check_out)[:8], fmt)
-    return round((t2 - t1).total_seconds() / 3600, 2)
+    diff = (t2 - t1).total_seconds() / 3600
+    if diff < 0:
+        diff += 24  # 跨天：结束时间小于开始时间则加24小时
+    return round(diff, 2)
 
 
 def query(user_id, start_date, end_date):
@@ -571,11 +574,12 @@ def get_status():
     today_str = bj_today().isoformat()
     now = bj_time_str()
 
-    sessions = query(user_id, today_str, today_str)
+    # 今日记录（用于统计）
+    today_sessions = query(user_id, today_str, today_str)
     open_session = None
     total_hours = 0
 
-    for s in sessions:
+    for s in today_sessions:
         if s['check_out'] is None:
             open_session = {
                 'id': s['id'],
@@ -585,15 +589,39 @@ def get_status():
         else:
             total_hours += calc_hours(str(s['check_in'])[:8], str(s['check_out'])[:8])
 
+    # 今日无进行中，查找之前日期的未下班记录（跨天）
+    if not open_session:
+        conn = get_db()
+        cur = conn.cursor()
+        if IS_POSTGRES:
+            row = cur.execute(
+                'SELECT * FROM attendance_records WHERE user_id = %s AND check_out IS NULL ORDER BY date DESC, id DESC LIMIT 1',
+                (user_id,)
+            ).fetchone()
+        else:
+            row = cur.execute(
+                'SELECT * FROM attendance_records WHERE user_id = ? AND check_out IS NULL ORDER BY date DESC, id DESC LIMIT 1',
+                (user_id,)
+            ).fetchone()
+        conn.close()
+        if row:
+            open_session = {
+                'id': row['id'],
+                'check_in': str(row['check_in'])[:5],
+                'current_hours': calc_hours(str(row['check_in'])[:8], now),
+                'cross_day': True,
+            }
+            total_hours += open_session['current_hours']
+
     # 加上当前进行中的时长
-    if open_session:
+    if open_session and open_session.get('cross_day') is None:
         total_hours += open_session['current_hours']
 
     return jsonify({
-        'checked_in': len(sessions) > 0,
+        'checked_in': len(today_sessions) > 0 or open_session is not None,
         'has_open_session': open_session is not None,
         'open_session': open_session,
-        'sessions_count': len(sessions),
+        'sessions_count': len(today_sessions),
         'today_hours': round(total_hours, 2),
     })
 
@@ -606,14 +634,23 @@ def check_in():
     today_str = bj_today().isoformat()
     now = bj_time_str()
 
-    # 检查是否有未下班的 session
-    sessions = query(user_id, today_str, today_str)
-    for s in sessions:
-        if s['check_out'] is None:
-            return jsonify({'success': False, 'message': '还有未结束的工作，请先下班打卡'})
-
+    # 检查是否有未下班的 session（包括跨天）
     conn = get_db()
     cur = conn.cursor()
+    if IS_POSTGRES:
+        open_rec = cur.execute(
+            'SELECT id FROM attendance_records WHERE user_id = %s AND check_out IS NULL LIMIT 1',
+            (user_id,)
+        ).fetchone()
+    else:
+        open_rec = cur.execute(
+            'SELECT id FROM attendance_records WHERE user_id = ? AND check_out IS NULL LIMIT 1',
+            (user_id,)
+        ).fetchone()
+    if open_rec:
+        conn.close()
+        return jsonify({'success': False, 'message': '还有未结束的工作，请先下班打卡'})
+
     if IS_POSTGRES:
         cur.execute(
             'INSERT INTO attendance_records (user_id, date, check_in) VALUES (%s, %s, %s)',
@@ -640,23 +677,28 @@ def _get_last_id(cur):
 @login_required
 def check_out():
     user_id = session['user_id']
-    today_str = bj_today().isoformat()
     now = bj_time_str()
     data = request.get_json()
     summary = (data or {}).get('summary', '')
 
-    # 找最新未下班的 session
-    sessions = query(user_id, today_str, today_str)
-    open_record = None
-    for s in sessions:
-        if s['check_out'] is None:
-            open_record = s
-
-    if open_record is None:
-        return jsonify({'success': False, 'message': '没有需要下班打卡的工作'})
-
+    # 查找所有未下班的记录（包括跨天）
     conn = get_db()
     cur = conn.cursor()
+    if IS_POSTGRES:
+        open_record = cur.execute(
+            'SELECT * FROM attendance_records WHERE user_id = %s AND check_out IS NULL ORDER BY date DESC, id DESC LIMIT 1',
+            (user_id,)
+        ).fetchone()
+    else:
+        open_record = cur.execute(
+            'SELECT * FROM attendance_records WHERE user_id = ? AND check_out IS NULL ORDER BY date DESC, id DESC LIMIT 1',
+            (user_id,)
+        ).fetchone()
+
+    if open_record is None:
+        conn.close()
+        return jsonify({'success': False, 'message': '没有需要下班打卡的工作'})
+
     if IS_POSTGRES:
         cur.execute(
             'UPDATE attendance_records SET check_out = %s, summary = %s WHERE id = %s',
